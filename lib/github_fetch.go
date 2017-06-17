@@ -116,6 +116,10 @@ func (gf *GitHubFetcher) stripTarPrefix(input io.ReadCloser) (io.ReadCloser, err
 		h, err := intar.Next()
 		if err != nil {
 			if err == io.EOF {
+				// Close the tarball so that we can
+				// complete writing to the file.
+				outtar.Close()
+
 				// Rewind the file so it can now be
 				// read.
 				if _, err := output.Seek(0, 0); err != nil {
@@ -173,4 +177,5 @@ func (t *tempTarball) Close() error {
 		return err
 	}
 	return os.Remove(t.Name())
+
 }
