@@ -64,3 +64,7 @@
 [[override]]
   branch = "master"
   name = "github.com/heroku/docker-registry-client"
+
+[[constraint]]
+  name = "gopkg.in/DataDog/dd-trace-go.v1"
+  version = "1.9.0"

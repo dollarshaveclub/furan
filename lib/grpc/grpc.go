@@ -16,6 +16,8 @@ import (
 	"github.com/dollarshaveclub/furan/lib/errors"
 	"github.com/dollarshaveclub/furan/lib/kafka"
 	"github.com/dollarshaveclub/furan/lib/metrics"
+	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc.v12"
+
 	"github.com/gocql/gocql"
 
 	"golang.org/x/net/context"
@@ -96,21 +98,22 @@ func newActiveBuildMap(logger *log.Logger) activeBuildMap {
 
 // GrpcServer represents an object that responds to gRPC calls
 type GrpcServer struct {
-	ib         builder.ImageBuildPusher
-	dl         datalayer.DataLayer
-	ep         kafka.EventBusProducer
-	ec         kafka.EventBusConsumer
-	ls         io.Writer
-	mc         metrics.MetricsCollector
-	kvo        consul.KeyValueOrchestrator
-	abm        activeBuildMap
-	wcf        []context.CancelFunc // worker CancelFuncs
-	wwg        *sync.WaitGroup      //async goroutines waitgroup
-	logger     *log.Logger
-	s          *grpc.Server
-	workerChan chan *workerRequest
-	qsize      uint
-	wcnt       uint
+	ib          builder.ImageBuildPusher
+	dl          datalayer.DataLayer
+	ep          kafka.EventBusProducer
+	ec          kafka.EventBusConsumer
+	ls          io.Writer
+	mc          metrics.MetricsCollector
+	kvo         consul.KeyValueOrchestrator
+	abm         activeBuildMap
+	wcf         []context.CancelFunc // worker CancelFuncs
+	wwg         *sync.WaitGroup      //async goroutines waitgroup
+	logger      *log.Logger
+	s           *grpc.Server
+	workerChan  chan *workerRequest
+	qsize       uint
+	wcnt        uint
+	serviceName string
 }
 
 type workerRequest struct {
@@ -119,21 +122,22 @@ type workerRequest struct {
 }
 
 // NewGRPCServer returns a new instance of the gRPC server
-func NewGRPCServer(ib builder.ImageBuildPusher, dl datalayer.DataLayer, ep kafka.EventBusProducer, ec kafka.EventBusConsumer, mc metrics.MetricsCollector, kvo consul.KeyValueOrchestrator, queuesize uint, concurrency uint, logger *log.Logger) *GrpcServer {
+func NewGRPCServer(ib builder.ImageBuildPusher, dl datalayer.DataLayer, ep kafka.EventBusProducer, ec kafka.EventBusConsumer, mc metrics.MetricsCollector, kvo consul.KeyValueOrchestrator, queuesize uint, concurrency uint, logger *log.Logger, serviceName string) *GrpcServer {
 	grs := &GrpcServer{
-		ib:         ib,
-		dl:         dl,
-		ep:         ep,
-		ec:         ec,
-		mc:         mc,
-		kvo:        kvo,
-		abm:        newActiveBuildMap(logger),
-		wcf:        []context.CancelFunc{},
-		wwg:        &sync.WaitGroup{},
-		logger:     logger,
-		workerChan: make(chan *workerRequest, queuesize),
-		qsize:      queuesize,
-		wcnt:       concurrency,
+		ib:          ib,
+		dl:          dl,
+		ep:          ep,
+		ec:          ec,
+		mc:          mc,
+		kvo:         kvo,
+		abm:         newActiveBuildMap(logger),
+		wcf:         []context.CancelFunc{},
+		wwg:         &sync.WaitGroup{},
+		logger:      logger,
+		workerChan:  make(chan *workerRequest, queuesize),
+		qsize:       queuesize,
+		wcnt:        concurrency,
+		serviceName: serviceName,
 	}
 	grs.runWorkers()
 	return grs
@@ -191,7 +195,8 @@ func (gr *GrpcServer) ListenRPC(addr string, port uint) error {
 		gr.logf("error starting gRPC listener: %v", err)
 		return err
 	}
-	s := grpc.NewServer()
+	ui := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName(gr.serviceName))
+	s := grpc.NewServer(grpc.UnaryInterceptor(ui))
 	gr.s = s
 	lib.RegisterFuranExecutorServer(s, gr)
 	gr.logf("gRPC listening on: %v", addr)
