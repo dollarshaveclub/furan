@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dollarshaveclub/furan/lib/tracing"
+
 	"github.com/dollarshaveclub/furan/generated/lib"
 	"github.com/dollarshaveclub/furan/lib/buildcontext"
 	"github.com/dollarshaveclub/furan/lib/builder"
@@ -17,6 +19,7 @@ import (
 	"github.com/dollarshaveclub/furan/lib/kafka"
 	"github.com/dollarshaveclub/furan/lib/metrics"
 	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc.v12"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
 	"github.com/gocql/gocql"
 
@@ -170,7 +173,8 @@ func (gr *GrpcServer) buildWorker(ctx context.Context) {
 			} else {
 				id, _ = buildcontext.BuildIDFromContext(wreq.ctx)
 				gr.logf("context is cancelled, skipping: %v", id)
-				if err = gr.dl.DeleteBuild(id); err != nil {
+				noOpSpan, _ := tracer.SpanFromContext(context.Background())
+				if err = gr.dl.DeleteBuild(noOpSpan, id); err != nil {
 					gr.logf("error deleting build: %v", err)
 				}
 			}
@@ -282,6 +286,8 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	var err error // so deferred finalize function has access to any error
 	var failed bool
 	var userError bool
+	rootSpan := tracer.StartSpan("sync.build")
+
 	var cf context.CancelFunc
 	ctx, cf = context.WithCancel(ctx)
 	defer cf()
@@ -291,6 +297,8 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 		return
 	}
 	defer gr.abm.RemoveBuild(id)
+
+	ctx = buildcontext.NewSpanContext(ctx, rootSpan)
 	gr.logf("syncBuild started: %v", id.String())
 	if err := gr.kvo.SetBuildRunning(id); err != nil {
 		gr.logf("error setting build as running in KV: %v", err)
@@ -301,6 +309,7 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	// Finalize build and send event. Failures should set err and return the appropriate build state.
 	defer func(id gocql.UUID) {
 		failed = outcome == lib.BuildStatusResponse_BUILD_FAILURE || outcome == lib.BuildStatusResponse_PUSH_FAILURE
+
 		flags := map[string]bool{
 			"failed":   failed,
 			"finished": true,
@@ -323,12 +332,13 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 			msg = "build finished"
 		}
 		gr.logf("syncBuild: finished: %v", msg)
-		if err2 := gr.dl.SetBuildState(id, outcome); err2 != nil {
+		if err2 := gr.dl.SetBuildState(rootSpan, id, outcome); err2 != nil {
 			gr.logf("failBuild: error setting build state: %v", err2)
 		}
-		if err2 := gr.dl.SetBuildFlags(id, flags); err2 != nil {
+		if err2 := gr.dl.SetBuildFlags(rootSpan, id, flags); err2 != nil {
 			gr.logf("failBuild: error setting build flags: %v", err2)
 		}
+		rootSpan.Finish(tracer.WithError(err))
 		event := &lib.BuildEvent{
 			EventError: &lib.BuildEventError{
 				ErrorType: eet,
@@ -350,9 +360,10 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	}
 	if buildcontext.IsCancelled(ctx.Done()) {
 		err = fmt.Errorf("build was cancelled")
+
 		return lib.BuildStatusResponse_BUILD_FAILURE
 	}
-	err = gr.dl.SetBuildState(id, lib.BuildStatusResponse_BUILDING)
+	err = gr.dl.SetBuildState(rootSpan, id, lib.BuildStatusResponse_BUILDING)
 	if err != nil {
 		err = fmt.Errorf("error setting build state to building: %v", err)
 		return lib.BuildStatusResponse_BUILD_FAILURE
@@ -373,7 +384,7 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 		err = fmt.Errorf("build was cancelled")
 		return lib.BuildStatusResponse_BUILD_FAILURE
 	}
-	err = gr.dl.SetBuildState(id, lib.BuildStatusResponse_PUSHING)
+	err = gr.dl.SetBuildState(rootSpan, id, lib.BuildStatusResponse_PUSHING)
 	if err != nil {
 		err = fmt.Errorf("error setting build state to pushing: %v", err)
 		return lib.BuildStatusResponse_BUILD_FAILURE
@@ -396,12 +407,12 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	if err != nil { // Cleaning images is non-fatal because concurrent builds can cause failures here
 		gr.logger.Printf("CleanImage error (non-fatal): %v", err)
 	}
-	err = gr.dl.SetBuildState(id, lib.BuildStatusResponse_SUCCESS)
+	err = gr.dl.SetBuildState(rootSpan, id, lib.BuildStatusResponse_SUCCESS)
 	if err != nil {
 		err = fmt.Errorf("error setting build state to success: %v", err)
 		return lib.BuildStatusResponse_PUSH_FAILURE
 	}
-	err = gr.dl.SetBuildCompletedTimestamp(id)
+	err = gr.dl.SetBuildCompletedTimestamp(rootSpan, id)
 	if err != nil {
 		err = fmt.Errorf("error setting build completed timestamp: %v", err)
 		return lib.BuildStatusResponse_PUSH_FAILURE
@@ -412,17 +423,19 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 // gRPC handlers
 func (gr *GrpcServer) StartBuild(ctx context.Context, req *lib.BuildRequest) (_ *lib.BuildRequestResponse, err error) {
 	resp := &lib.BuildRequestResponse{}
+	rootSpan := tracer.StartSpan("start.build")
+	defer rootSpan.Finish(tracer.WithError(err))
 	if req.Push.Registry.Repo == "" {
 		if req.Push.S3.Bucket == "" || req.Push.S3.KeyPrefix == "" || req.Push.S3.Region == "" {
 			return nil, grpc.Errorf(codes.InvalidArgument, "must specify either registry repo or S3 region/bucket/key-prefix")
 		}
 	}
-	id, err := gr.dl.CreateBuild(req)
+	id, err := gr.dl.CreateBuild(rootSpan, req)
 	if err != nil {
 		return nil, grpc.Errorf(codes.Internal, "error creating build in DB: %v", err)
 	}
 	var cf context.CancelFunc
-	ctx, cf = context.WithCancel(buildcontext.NewBuildIDContext(context.Background(), id))
+	ctx, cf = context.WithCancel(buildcontext.NewBuildIDContext(context.Background(), id, rootSpan))
 	wreq := workerRequest{
 		ctx: ctx,
 		req: req,
@@ -435,7 +448,7 @@ func (gr *GrpcServer) StartBuild(ctx context.Context, req *lib.BuildRequest) (_ 
 		return resp, nil
 	default:
 		gr.logf("build id %v cannot run because queue is full", id.String())
-		err = gr.dl.DeleteBuild(id)
+		err = gr.dl.DeleteBuild(rootSpan, id)
 		if err != nil {
 			gr.logf("error deleting build from DB: %v", err)
 		}
@@ -444,13 +457,16 @@ func (gr *GrpcServer) StartBuild(ctx context.Context, req *lib.BuildRequest) (_ 
 }
 
 func (gr *GrpcServer) GetBuildStatus(ctx context.Context, req *lib.BuildStatusRequest) (_ *lib.BuildStatusResponse, err error) {
+	rootSpan := tracer.StartSpan("get.build.status")
+	defer rootSpan.Finish(tracer.WithError(err))
 	resp := &lib.BuildStatusResponse{}
 	id, err := gocql.ParseUUID(req.BuildId)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "bad id: %v", err)
 	}
-	resp, err = gr.dl.GetBuildByID(id)
+	resp, err = gr.dl.GetBuildByID(rootSpan, id)
 	if err != nil {
+		rootSpan.Finish(tracer.WithError(err))
 		if err == gocql.ErrNotFound {
 			return nil, grpc.Errorf(codes.InvalidArgument, "build not found")
 		} else {
@@ -461,12 +477,13 @@ func (gr *GrpcServer) GetBuildStatus(ctx context.Context, req *lib.BuildStatusRe
 }
 
 // Reconstruct the stream of events for a build from the data layer
-func (gr *GrpcServer) eventsFromDL(stream lib.FuranExecutor_MonitorBuildServer, id gocql.UUID) error {
-	bo, err := gr.dl.GetBuildOutput(id, "build_output")
+func (gr *GrpcServer) eventsFromDL(parentSpan tracer.Span, stream lib.FuranExecutor_MonitorBuildServer, id gocql.UUID) error {
+	span := tracing.StartChildSpan("events.from.dl", parentSpan)
+	bo, err := gr.dl.GetBuildOutput(span, id, "build_output")
 	if err != nil {
 		return fmt.Errorf("error getting build output: %v", err)
 	}
-	po, err := gr.dl.GetBuildOutput(id, "push_output")
+	po, err := gr.dl.GetBuildOutput(span, id, "push_output")
 	if err != nil {
 		return fmt.Errorf("error getting push output: %v", err)
 	}
@@ -511,22 +528,26 @@ func (gr *GrpcServer) eventsFromEventBus(stream lib.FuranExecutor_MonitorBuildSe
 
 // MonitorBuild streams events from a specified build
 func (gr *GrpcServer) MonitorBuild(req *lib.BuildStatusRequest, stream lib.FuranExecutor_MonitorBuildServer) (err error) {
+	rootSpan := tracer.StartSpan("monitor.build")
+	defer rootSpan.Finish(tracer.WithError(err))
 	id, err := gocql.ParseUUID(req.BuildId)
 	if err != nil {
 		return grpc.Errorf(codes.InvalidArgument, "bad build id: %v", err)
 	}
-	build, err := gr.dl.GetBuildByID(id)
+	build, err := gr.dl.GetBuildByID(rootSpan, id)
 	if err != nil {
 		return grpc.Errorf(codes.Internal, "error getting build: %v", err)
 	}
 	if build.Finished { // No need to use Kafka, just stream events from the data layer
-		return gr.eventsFromDL(stream, id)
+		return gr.eventsFromDL(rootSpan, stream, id)
 	}
 	return gr.eventsFromEventBus(stream, id)
 }
 
 // CancelBuild stops a currently-running build
 func (gr *GrpcServer) CancelBuild(ctx context.Context, req *lib.BuildCancelRequest) (_ *lib.BuildCancelResponse, err error) {
+	rootSpan := tracer.StartSpan("cancel.build")
+	defer rootSpan.Finish(tracer.WithError(err))
 	id, err := gocql.ParseUUID(req.BuildId)
 	if err != nil {
 		return nil, grpc.Errorf(codes.InvalidArgument, "invalid BuildId")

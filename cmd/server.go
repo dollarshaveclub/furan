@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -170,8 +171,8 @@ func server(cmd *cobra.Command, args []string) {
 	if err != nil {
 		log.Fatalf("error creating key value orchestrator: %v", err)
 	}
-
-	grpcSvr := grpc.NewGRPCServer(imageBuilder, dbConfig.Datalayer, kafkaConfig.Manager, kafkaConfig.Manager, mc, kvo, serverConfig.Queuesize, serverConfig.Concurrency, logger, datadogServiceName)
+	grpcServiceName := strings.Join([]string{datadogServiceName, "grpc"}, ".")
+	grpcSvr := grpc.NewGRPCServer(imageBuilder, dbConfig.Datalayer, kafkaConfig.Manager, kafkaConfig.Manager, mc, kvo, serverConfig.Queuesize, serverConfig.Concurrency, logger, grpcServiceName)
 	go grpcSvr.ListenRPC(serverConfig.GRPCAddr, serverConfig.GRPCPort)
 
 	ha := httphandlers.NewHTTPAdapter(grpcSvr)

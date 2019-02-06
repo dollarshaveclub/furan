@@ -14,8 +14,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dollarshaveclub/furan/lib/tracing"
+
 	"github.com/google/go-github/github"
 	"golang.org/x/oauth2"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
 const (
@@ -25,8 +28,8 @@ const (
 // CodeFetcher represents an object capable of fetching code and returning a
 // gzip-compressed tarball io.Reader
 type CodeFetcher interface {
-	GetCommitSHA(string, string, string) (string, error)
-	Get(string, string, string) (io.Reader, error)
+	GetCommitSHA(tracer.Span, string, string, string) (string, error)
+	Get(tracer.Span, string, string, string) (io.Reader, error)
 }
 
 // GitHubFetcher represents a github data fetcher
@@ -45,16 +48,20 @@ func NewGitHubFetcher(token string) *GitHubFetcher {
 }
 
 // GetCommitSHA returns the commit SHA for a reference
-func (gf *GitHubFetcher) GetCommitSHA(owner string, repo string, ref string) (string, error) {
+func (gf *GitHubFetcher) GetCommitSHA(parentSpan tracer.Span, owner string, repo string, ref string) (csha string, err error) {
+	span := tracing.StartChildSpan("github_fetcher.get_commit_sha", parentSpan)
+	defer span.Finish(tracer.WithError(err))
 	ctx, cf := context.WithTimeout(context.Background(), githubDownloadTimeoutSecs*time.Second)
 	defer cf()
-	csha, _, err := gf.c.Repositories.GetCommitSHA1(ctx, owner, repo, ref, "")
+	csha, _, err = gf.c.Repositories.GetCommitSHA1(ctx, owner, repo, ref, "")
 	return csha, err
 }
 
 // Get fetches contents of GitHub repo and returns the processed contents as
 // an in-memory io.Reader.
-func (gf *GitHubFetcher) Get(owner string, repo string, ref string) (tarball io.Reader, err error) {
+func (gf *GitHubFetcher) Get(parentSpan tracer.Span, owner string, repo string, ref string) (tarball io.Reader, err error) {
+	span := tracing.StartChildSpan("github_fetcher.get", parentSpan)
+	defer span.Finish(tracer.WithError(err))
 	opt := &github.RepositoryContentGetOptions{
 		Ref: ref,
 	}

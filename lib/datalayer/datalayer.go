@@ -6,22 +6,24 @@ import (
 
 	"github.com/dollarshaveclub/furan/generated/lib"
 	"github.com/dollarshaveclub/furan/lib/db"
+	"github.com/dollarshaveclub/furan/lib/tracing"
 	"github.com/gocql/gocql"
 	"github.com/golang/protobuf/proto"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
 // DataLayer describes an object that interacts with the persistent data store
 type DataLayer interface {
-	CreateBuild(*lib.BuildRequest) (gocql.UUID, error)
-	GetBuildByID(gocql.UUID) (*lib.BuildStatusResponse, error)
-	SetBuildFlags(gocql.UUID, map[string]bool) error
-	SetBuildCompletedTimestamp(gocql.UUID) error
-	SetBuildState(gocql.UUID, lib.BuildStatusResponse_BuildState) error
-	DeleteBuild(gocql.UUID) error
-	SetBuildTimeMetric(gocql.UUID, string) error
-	SetDockerImageSizesMetric(gocql.UUID, int64, int64) error
-	SaveBuildOutput(gocql.UUID, []lib.BuildEvent, string) error
-	GetBuildOutput(gocql.UUID, string) ([]lib.BuildEvent, error)
+	CreateBuild(tracer.Span, *lib.BuildRequest) (gocql.UUID, error)
+	GetBuildByID(tracer.Span, gocql.UUID) (*lib.BuildStatusResponse, error)
+	SetBuildFlags(tracer.Span, gocql.UUID, map[string]bool) error
+	SetBuildCompletedTimestamp(tracer.Span, gocql.UUID) error
+	SetBuildState(tracer.Span, gocql.UUID, lib.BuildStatusResponse_BuildState) error
+	DeleteBuild(tracer.Span, gocql.UUID) error
+	SetBuildTimeMetric(tracer.Span, gocql.UUID, string) error
+	SetDockerImageSizesMetric(tracer.Span, gocql.UUID, int64, int64) error
+	SaveBuildOutput(tracer.Span, gocql.UUID, []lib.BuildEvent, string) error
+	GetBuildOutput(tracer.Span, gocql.UUID, string) ([]lib.BuildEvent, error)
 }
 
 // DBLayer is an DataLayer instance that interacts with the Cassandra database
@@ -35,8 +37,8 @@ func NewDBLayer(s *gocql.Session) *DBLayer {
 }
 
 // CreateBuild inserts a new build into the DB returning the ID
-func (dl *DBLayer) CreateBuild(req *lib.BuildRequest) (gocql.UUID, error) {
-	q := `INSERT INTO builds_by_id (id, request, state, finished, failed, cancelled, started)
+func (dl *DBLayer) CreateBuild(parentSpan tracer.Span, req *lib.BuildRequest) (gocql.UUID, error) {
+	queryString := `INSERT INTO builds_by_id (id, request, state, finished, failed, cancelled, started)
         VALUES (?,{github_repo: ?, dockerfile_path: ?, tags: ?, tag_with_commit_sha: ?, ref: ?,
 					push_registry_repo: ?, push_s3_region: ?, push_s3_bucket: ?,
 					push_s3_key_prefix: ?},?,?,?,?,?);`
@@ -45,25 +47,29 @@ func (dl *DBLayer) CreateBuild(req *lib.BuildRequest) (gocql.UUID, error) {
 		return id, err
 	}
 	udt := db.UDTFromBuildRequest(req)
-	err = dl.s.Query(q, id, udt.GithubRepo, udt.DockerfilePath, udt.Tags, udt.TagWithCommitSha, udt.Ref,
+	query := dl.s.Query(queryString, id, udt.GithubRepo, udt.DockerfilePath, udt.Tags, udt.TagWithCommitSha, udt.Ref,
 		udt.PushRegistryRepo, udt.PushS3Region, udt.PushS3Bucket, udt.PushS3KeyPrefix,
-		lib.BuildStatusResponse_STARTED.String(), false, false, false, time.Now()).Exec()
+		lib.BuildStatusResponse_STARTED.String(), false, false, false, time.Now())
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	err = tracedQuery.Exec()
 	if err != nil {
 		return id, err
 	}
 
-	q = `INSERT INTO build_metrics_by_id (id) VALUES (?);`
-	err = dl.s.Query(q, id).Exec()
+	queryString = `INSERT INTO build_metrics_by_id (id) VALUES (?);`
+	tracedQuery = tracing.GetTracedQuery(dl.s.Query(queryString, id), parentSpan)
+	tracedQuery.Exec()
 	if err != nil {
 		return id, err
 	}
-	q = `INSERT INTO build_events_by_id (id) VALUES (?);`
-	return id, dl.s.Query(q, id).Exec()
+	queryString = `INSERT INTO build_events_by_id (id) VALUES (?);`
+	tracedQuery = tracing.GetTracedQuery(dl.s.Query(queryString, id), parentSpan)
+	return id, dl.s.Query(queryString, id).Exec()
 }
 
 // GetBuildByID fetches a build object from the DB
-func (dl *DBLayer) GetBuildByID(id gocql.UUID) (*lib.BuildStatusResponse, error) {
-	q := `SELECT request, state, finished, failed, cancelled, started, completed,
+func (dl *DBLayer) GetBuildByID(parentSpan tracer.Span, id gocql.UUID) (*lib.BuildStatusResponse, error) {
+	queryString := `SELECT request, state, finished, failed, cancelled, started, completed,
 	      duration FROM builds_by_id WHERE id = ?;`
 	var udt db.BuildRequestUDT
 	var state string
@@ -71,7 +77,8 @@ func (dl *DBLayer) GetBuildByID(id gocql.UUID) (*lib.BuildStatusResponse, error)
 	bi := &lib.BuildStatusResponse{
 		BuildId: id.String(),
 	}
-	err := dl.s.Query(q, id).Scan(&udt, &state, &bi.Finished, &bi.Failed,
+	tracedQuery := tracing.GetTracedQuery(dl.s.Query(queryString, id), parentSpan)
+	err := tracedQuery.Scan(&udt, &state, &bi.Finished, &bi.Failed,
 		&bi.Cancelled, &started, &completed, &bi.Duration)
 	if err != nil {
 		return bi, err
@@ -85,11 +92,13 @@ func (dl *DBLayer) GetBuildByID(id gocql.UUID) (*lib.BuildStatusResponse, error)
 
 // SetBuildFlags sets the boolean flags on the build object
 // Caller must ensure that the flags passed in are valid
-func (dl *DBLayer) SetBuildFlags(id gocql.UUID, flags map[string]bool) error {
+func (dl *DBLayer) SetBuildFlags(parentSpan tracer.Span, id gocql.UUID, flags map[string]bool) error {
 	var err error
-	q := `UPDATE builds_by_id SET %v = ? WHERE id = ?;`
+	queryString := `UPDATE builds_by_id SET %v = ? WHERE id = ?;`
 	for k, v := range flags {
-		err = dl.s.Query(fmt.Sprintf(q, k), v, id).Exec()
+		query := dl.s.Query(fmt.Sprintf(queryString, k), v, id)
+		tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+		err = tracedQuery.Exec()
 		if err != nil {
 			return err
 		}
@@ -98,41 +107,52 @@ func (dl *DBLayer) SetBuildFlags(id gocql.UUID, flags map[string]bool) error {
 }
 
 // SetBuildCompletedTimestamp sets the completed timestamp on a build to time.Now()
-func (dl *DBLayer) SetBuildCompletedTimestamp(id gocql.UUID) error {
+func (dl *DBLayer) SetBuildCompletedTimestamp(parentSpan tracer.Span, id gocql.UUID) error {
 	var started time.Time
 	now := time.Now()
-	q := `SELECT started FROM builds_by_id WHERE id = ?;`
-	err := dl.s.Query(q, id).Scan(&started)
+
+	queryString := `SELECT started FROM builds_by_id WHERE id = ?;`
+	query := dl.s.Query(queryString, id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	err := tracedQuery.Scan(&started)
 	if err != nil {
 		return err
 	}
 	duration := now.Sub(started).Seconds()
-	q = `UPDATE builds_by_id SET completed = ?, duration = ? WHERE id = ?;`
-	return dl.s.Query(q, now, duration, id).Exec()
+	queryString = `UPDATE builds_by_id SET completed = ?, duration = ? WHERE id = ?;`
+	query = dl.s.Query(queryString, now, duration, id)
+	tracedQuery = tracing.GetTracedQuery(query, parentSpan)
+	return tracedQuery.Exec()
 }
 
 // SetBuildState sets the state of a build
-func (dl *DBLayer) SetBuildState(id gocql.UUID, state lib.BuildStatusResponse_BuildState) error {
-	q := `UPDATE builds_by_id SET state = ? WHERE id = ?;`
-	return dl.s.Query(q, state.String(), id).Exec()
+func (dl *DBLayer) SetBuildState(parentSpan tracer.Span, id gocql.UUID, state lib.BuildStatusResponse_BuildState) error {
+	queryString := `UPDATE builds_by_id SET state = ? WHERE id = ?;`
+	query := dl.s.Query(queryString, state.String(), id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	return tracedQuery.Exec()
 }
 
 // DeleteBuild removes a build from the DB.
 // Only used in case of queue full when we can't actually do a build
-func (dl *DBLayer) DeleteBuild(id gocql.UUID) error {
-	q := `DELETE FROM builds_by_id WHERE id = ?;`
-	err := dl.s.Query(q, id).Exec()
+func (dl *DBLayer) DeleteBuild(parentSpan tracer.Span, id gocql.UUID) error {
+	queryString := `DELETE FROM builds_by_id WHERE id = ?;`
+	query := dl.s.Query(queryString, id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	err := tracedQuery.Exec()
 	if err != nil {
 		return err
 	}
-	q = `DELETE FROM build_metrics_by_id WHERE id = ?;`
-	return dl.s.Query(q, id).Exec()
+	queryString = `DELETE FROM build_metrics_by_id WHERE id = ?;`
+	query = dl.s.Query(queryString, id)
+	tracedQuery = tracing.GetTracedQuery(query, parentSpan)
+	return tracedQuery.Exec()
 }
 
 // SetBuildTimeMetric sets a build metric to time.Now()
 // metric is the name of the column to update
 // if metric is a *_completed column, it will also compute and persist the duration
-func (dl *DBLayer) SetBuildTimeMetric(id gocql.UUID, metric string) error {
+func (dl *DBLayer) SetBuildTimeMetric(parentSpan tracer.Span, id gocql.UUID, metric string) error {
 	var started time.Time
 	now := time.Now()
 	getstarted := true
@@ -151,33 +171,41 @@ func (dl *DBLayer) SetBuildTimeMetric(id gocql.UUID, metric string) error {
 	default:
 		getstarted = false
 	}
-	q := `UPDATE build_metrics_by_id SET %v = ? WHERE id = ?;`
-	err := dl.s.Query(fmt.Sprintf(q, metric), now, id).Exec()
+	queryString := `UPDATE build_metrics_by_id SET %v = ? WHERE id = ?;`
+	query := dl.s.Query(fmt.Sprintf(queryString, metric), now, id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	err := tracedQuery.Exec()
 	if err != nil {
 		return err
 	}
 	if getstarted {
-		q := `SELECT %v FROM build_metrics_by_id WHERE id = ?;`
-		err := dl.s.Query(fmt.Sprintf(q, startedcolumn), id).Scan(&started)
+		queryString = `SELECT %v FROM build_metrics_by_id WHERE id = ?;`
+		query = dl.s.Query(fmt.Sprintf(queryString, startedcolumn), id)
+		tracedQuery = tracing.GetTracedQuery(query, parentSpan)
+		err := tracedQuery.Scan(&started)
 		if err != nil {
 			return err
 		}
 		duration := now.Sub(started).Seconds()
 
-		q = `UPDATE build_metrics_by_id SET %v = ? WHERE id = ?;`
-		return dl.s.Query(fmt.Sprintf(q, durationcolumn), duration, id).Exec()
+		queryString = `UPDATE build_metrics_by_id SET %v = ? WHERE id = ?;`
+		query = dl.s.Query(fmt.Sprintf(queryString, durationcolumn), duration, id)
+		tracedQuery = tracing.GetTracedQuery(query, parentSpan)
+		return tracedQuery.Exec()
 	}
 	return nil
 }
 
 // SetDockerImageSizesMetric sets the docker image sizes for a build
-func (dl *DBLayer) SetDockerImageSizesMetric(id gocql.UUID, size int64, vsize int64) error {
-	q := `UPDATE build_metrics_by_id SET docker_image_size = ?, docker_image_vsize = ? WHERE id = ?;`
-	return dl.s.Query(q, size, vsize, id).Exec()
+func (dl *DBLayer) SetDockerImageSizesMetric(parentSpan tracer.Span, id gocql.UUID, size int64, vsize int64) error {
+	queryString := `UPDATE build_metrics_by_id SET docker_image_size = ?, docker_image_vsize = ? WHERE id = ?;`
+	query := dl.s.Query(queryString, size, vsize, id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	return tracedQuery.Exec()
 }
 
 // SaveBuildOutput serializes an array of stream events to the database
-func (dl *DBLayer) SaveBuildOutput(id gocql.UUID, output []lib.BuildEvent, column string) error {
+func (dl *DBLayer) SaveBuildOutput(parentSpan tracer.Span, id gocql.UUID, output []lib.BuildEvent, column string) error {
 	serialized := make([][]byte, len(output))
 	var err error
 	var b []byte
@@ -188,16 +216,20 @@ func (dl *DBLayer) SaveBuildOutput(id gocql.UUID, output []lib.BuildEvent, colum
 		}
 		serialized[i] = b
 	}
-	q := `UPDATE build_events_by_id SET %v = ? WHERE id = ?;`
-	return dl.s.Query(fmt.Sprintf(q, column), serialized, id.String()).Exec()
+	queryString := `UPDATE build_events_by_id SET %v = ? WHERE id = ?;`
+	query := dl.s.Query(fmt.Sprintf(queryString, column), serialized, id.String())
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	return tracedQuery.Exec()
 }
 
 // GetBuildOutput returns an array of stream events from the database
-func (dl *DBLayer) GetBuildOutput(id gocql.UUID, column string) ([]lib.BuildEvent, error) {
+func (dl *DBLayer) GetBuildOutput(parentSpan tracer.Span, id gocql.UUID, column string) ([]lib.BuildEvent, error) {
 	var rawoutput [][]byte
 	output := []lib.BuildEvent{}
-	q := `SELECT %v FROM build_events_by_id WHERE id = ?;`
-	err := dl.s.Query(fmt.Sprintf(q, column), id).Scan(&rawoutput)
+	queryString := `SELECT %v FROM build_events_by_id WHERE id = ?;`
+	query := dl.s.Query(fmt.Sprintf(queryString, column), id)
+	tracedQuery := tracing.GetTracedQuery(query, parentSpan)
+	err := tracedQuery.Scan(&rawoutput)
 	if err != nil {
 		return output, err
 	}

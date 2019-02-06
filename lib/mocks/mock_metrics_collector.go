@@ -33,17 +33,17 @@ func (m *MockMetricsCollector) EXPECT() *MockMetricsCollectorMockRecorder {
 }
 
 // BuildFailed mocks base method
-func (m *MockMetricsCollector) BuildFailed(arg0, arg1 string) error {
+func (m *MockMetricsCollector) BuildFailed(arg0, arg1 string, arg2 bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "BuildFailed", arg0, arg1)
+	ret := m.ctrl.Call(m, "BuildFailed", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // BuildFailed indicates an expected call of BuildFailed
-func (mr *MockMetricsCollectorMockRecorder) BuildFailed(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockMetricsCollectorMockRecorder) BuildFailed(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildFailed", reflect.TypeOf((*MockMetricsCollector)(nil).BuildFailed), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BuildFailed", reflect.TypeOf((*MockMetricsCollector)(nil).BuildFailed), arg0, arg1, arg2)
 }
 
 // BuildStarted mocks base method

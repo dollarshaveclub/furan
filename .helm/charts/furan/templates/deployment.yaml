@@ -99,6 +99,12 @@ spec:
         {{ if .Values.datadog.overrideDefaultTags }}
           - --default-metrics-tags=env:{{ .Values.env }},namespace:{{ .Release.Namespace }}
         {{ end }}
+        {{ if .Values.datadog.datadogTracingAgent }}
+          - --datadog-tracing-agent-addr:{{ .Values.datadog.tracingAgentAddr }}
+        {{ end }}
+        {{ if .Values.datadog.serviceName }}
+          - --datadog-service-name:{{ .Values.datadog.serviceName }}
+        {{ end }}
           - --consul-addr={{ .Values.consulAddr }}
         env:
         - name: DOCKER_HOST

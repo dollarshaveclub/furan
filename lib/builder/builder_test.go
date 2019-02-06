@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
 	dtypes "github.com/docker/engine-api/types"
 	"github.com/dollarshaveclub/furan/generated/lib"
 	"github.com/dollarshaveclub/furan/lib/buildcontext"
@@ -18,6 +20,7 @@ import (
 var testLogger = log.New(ioutil.Discard, "", log.LstdFlags)
 var testDockerCfg = map[string]dtypes.AuthConfig{}
 var testS3ErrorLogcfg = S3ErrorLogConfig{}
+testSpan, _ := tracer.SpanFromContext(context.Background())
 
 type imageBuildPusherDeps struct {
 	ctrl *gomock.Controller
@@ -55,7 +58,7 @@ func TestImageBuildTagCheckRegistrySkip(t *testing.T) {
 	defer ctrl.Finish()
 
 	id, _ := gocql.RandomUUID()
-	ctx := buildcontext.NewBuildIDContext(context.Background(), id)
+	ctx := buildcontext.NewBuildIDContext(context.Background(), id, testSpan))
 
 	deps.mdl.EXPECT().SetBuildTimeMetric(gomock.Any(), id, gomock.Any()).Times(1)
 	deps.mcf.EXPECT().GetCommitSHA(gomock.Any(), "dollarshaveclub", "furan", "master").Return("asdf1234", nil).Times(1)
@@ -90,7 +93,7 @@ func TestImageBuildTagCheckS3Skip(t *testing.T) {
 	defer ctrl.Finish()
 
 	id, _ := gocql.RandomUUID()
-	ctx := buildcontext.NewBuildIDContext(context.Background(), id)
+	ctx := buildcontext.NewBuildIDContext(context.Background(), id, testSpan)
 
 	deps.mdl.EXPECT().SetBuildTimeMetric(gomock.Any(), id, gomock.Any()).Times(1)
 	deps.mcf.EXPECT().GetCommitSHA(gomock.Any(), "dollarshaveclub", "furan", "master").Return("asdf1234", nil).Times(1)
