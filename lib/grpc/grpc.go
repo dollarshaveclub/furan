@@ -287,6 +287,7 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	var failed bool
 	var userError bool
 	rootSpan := tracer.StartSpan("sync.build")
+	rootSpan.SetTag("env", "qa")
 
 	var cf context.CancelFunc
 	ctx, cf = context.WithCancel(ctx)
@@ -322,6 +323,8 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 			eet = lib.BuildEventError_NO_ERROR
 			gr.mc.BuildSucceeded(req.Build.GithubRepo, req.Build.Ref)
 		}
+		rootSpan.Finish(tracer.WithError(err))
+		gr.logf("root span finished (%v)", err)
 		if err := gr.totalDuration(ctx, req); err != nil {
 			gr.logger.Printf("error pushing total duration: %v", err)
 		}
@@ -338,7 +341,6 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 		if err2 := gr.dl.SetBuildFlags(rootSpan, id, flags); err2 != nil {
 			gr.logf("failBuild: error setting build flags: %v", err2)
 		}
-		rootSpan.Finish(tracer.WithError(err))
 		event := &lib.BuildEvent{
 			EventError: &lib.BuildEventError{
 				ErrorType: eet,
