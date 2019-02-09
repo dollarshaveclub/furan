@@ -95,9 +95,7 @@ func (dl *DBLayer) SetBuildFlags(parentSpan tracer.Span, id gocql.UUID, flags ma
 	defer span.Finish(tracer.WithError(err))
 	q := `UPDATE builds_by_id SET %v = ? WHERE id = ?;`
 	for k, v := range flags {
-		query := dl.s.Query(fmt.Sprintf(q, k), v, id)
-		tracedQuery := tracing.GetTracedQuery(query, parentSpan)
-		err = tracedQuery.Exec()
+		err = dl.s.Query(fmt.Sprintf(q, k), v, id).Exec()
 		if err != nil {
 			return err
 		}
