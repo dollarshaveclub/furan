@@ -5,8 +5,11 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"github.com/dollarshaveclub/furan/lib/tracing"
 
@@ -287,7 +290,8 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	var failed bool
 	var userError bool
 	rootSpan := tracer.StartSpan("sync.build")
-	rootSpan.SetTag("env", "qa")
+	resource := strings.Join([]string{req.Build.GetGithubRepo(), req.Build.GetRef()}, ":")
+	rootSpan.SetTag(ext.ResourceName, resource)
 
 	var cf context.CancelFunc
 	ctx, cf = context.WithCancel(ctx)
