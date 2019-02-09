@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
 	pkgerror "github.com/pkg/errors"
 	"golang.org/x/net/context"
 
@@ -265,13 +267,15 @@ func (ib *ImageBuilder) tagCheck(ctx context.Context, req *lib.BuildRequest) (bo
 }
 
 // Build builds an image accourding to the request
-func (ib *ImageBuilder) Build(ctx context.Context, req *lib.BuildRequest, id gocql.UUID) (string, error) {
+func (ib *ImageBuilder) Build(ctx context.Context, req *lib.BuildRequest, id gocql.UUID) (_ string, err error) {
 	ib.logf(ctx, "starting build")
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return "", fmt.Errorf("span missing from context")
 	}
-	err := ib.dl.SetBuildTimeMetric(span, id, "docker_build_started")
+	buildSpan := tracer.StartSpan("image_builder.build", tracer.ChildOf(parentSpan.Context()))
+	defer buildSpan.Finish(tracer.WithError(err))
+	err = ib.dl.SetBuildTimeMetric(buildSpan, id, "docker_build_started")
 	if err != nil {
 		return "", fmt.Errorf("error setting build time metric in DB: %v", err)
 	}
@@ -292,7 +296,7 @@ func (ib *ImageBuilder) Build(ctx context.Context, req *lib.BuildRequest, id goc
 		return "", fmt.Errorf("build was cancelled: %v", ctx.Err())
 	}
 	ib.logf(ctx, "fetching github repo: %v", req.Build.GithubRepo)
-	contents, err := ib.gf.Get(span, owner, repo, req.Build.Ref)
+	contents, err := ib.gf.Get(buildSpan, owner, repo, req.Build.Ref)
 	if err != nil {
 		return "", fmt.Errorf("error fetching repo: %v", err)
 	}
@@ -568,7 +572,7 @@ func (ib *ImageBuilder) CleanImage(ctx context.Context, imageid string) error {
 // PushBuildToRegistry pushes the already built image and all associated tags to the
 // configured remote Docker registry. Caller must ensure the image has already
 // been built successfully
-func (ib *ImageBuilder) PushBuildToRegistry(ctx context.Context, req *lib.BuildRequest) error {
+func (ib *ImageBuilder) PushBuildToRegistry(ctx context.Context, req *lib.BuildRequest) (err error) {
 	if buildcontext.IsCancelled(ctx.Done()) {
 		return fmt.Errorf("push was cancelled: %v", ctx.Err())
 	}
@@ -576,12 +580,14 @@ func (ib *ImageBuilder) PushBuildToRegistry(ctx context.Context, req *lib.BuildR
 	if !ok {
 		return fmt.Errorf("build id missing from context")
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("span missing from context")
 	}
 	ib.logf(ctx, "pushing")
-	err := ib.dl.SetBuildTimeMetric(span, id, "push_started")
+	pushSpan := tracer.StartSpan("image_builder.push", tracer.ChildOf(parentSpan.Context()))
+	defer pushSpan.Finish(tracer.WithError(err))
+	err = ib.dl.SetBuildTimeMetric(pushSpan, id, "push_started")
 	if err != nil {
 		return err
 	}
@@ -632,7 +638,7 @@ func (ib *ImageBuilder) PushBuildToRegistry(ctx context.Context, req *lib.BuildR
 			return err
 		}
 	}
-	err = ib.dl.SetBuildTimeMetric(span, id, "push_completed")
+	err = ib.dl.SetBuildTimeMetric(pushSpan, id, "push_completed")
 	if err != nil {
 		return err
 	}
@@ -657,10 +663,16 @@ func (ib *ImageBuilder) getCommitSHA(ctx context.Context, repo, ref string) (str
 }
 
 // PushBuildToS3 exports and uploads the already built image to the configured S3 bucket/key
-func (ib *ImageBuilder) PushBuildToS3(ctx context.Context, imageid string, req *lib.BuildRequest) error {
+func (ib *ImageBuilder) PushBuildToS3(ctx context.Context, imageid string, req *lib.BuildRequest) (err error) {
 	if buildcontext.IsCancelled(ctx.Done()) {
 		return fmt.Errorf("push was cancelled: %v", ctx.Err())
 	}
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("span missing from context")
+	}
+	pushSpan := tracer.StartSpan("image_builder.push", tracer.ChildOf(parentSpan.Context()))
+	defer pushSpan.Finish(tracer.WithError(err))
 	csha, err := ib.getCommitSHA(ctx, req.Build.GithubRepo, req.Build.Ref)
 	if err != nil {
 		return err

@@ -5,11 +5,8 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"time"
-
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 	"github.com/dollarshaveclub/furan/lib/tracing"
 
@@ -287,12 +284,7 @@ func (gr *GrpcServer) monitorCancelled(ctx context.Context, cf context.CancelFun
 // Performs build synchronously
 func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (outcome lib.BuildStatusResponse_BuildState) {
 	var err error // so deferred finalize function has access to any error
-	var failed bool
-	var userError bool
-	rootSpan := tracer.StartSpan("sync.build")
-	resource := strings.Join([]string{req.Build.GetGithubRepo(), req.Build.GetRef()}, ":")
-	rootSpan.SetTag(ext.ResourceName, resource)
-
+	var failed, userError bool
 	var cf context.CancelFunc
 	ctx, cf = context.WithCancel(ctx)
 	defer cf()
@@ -302,6 +294,13 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 		return
 	}
 	defer gr.abm.RemoveBuild(id)
+
+	rootSpan := tracer.StartSpan("build")
+	rootSpan.SetTag("repo", req.GetBuild().GetGithubRepo())
+	rootSpan.SetTag("ref", req.GetBuild().GetRef())
+	rootSpan.SetTag("build_id", id.String())
+	rootSpan.SetTag("s3", req.GetPush().GetS3())
+	rootSpan.SetTag("registry", req.GetPush().GetRegistry())
 
 	ctx = buildcontext.NewSpanContext(ctx, rootSpan)
 	gr.logf("syncBuild started: %v", id.String())
