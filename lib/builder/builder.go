@@ -273,9 +273,7 @@ func (ib *ImageBuilder) Build(ctx context.Context, req *lib.BuildRequest, id goc
 	if !ok {
 		return "", fmt.Errorf("span missing from context")
 	}
-	buildSpan := tracer.StartSpan("image_builder.build", tracer.ChildOf(parentSpan.Context()))
-	defer buildSpan.Finish(tracer.WithError(err))
-	err = ib.dl.SetBuildTimeMetric(buildSpan, id, "docker_build_started")
+	err = ib.dl.SetBuildTimeMetric(parentSpan, id, "docker_build_started")
 	if err != nil {
 		return "", fmt.Errorf("error setting build time metric in DB: %v", err)
 	}
@@ -296,7 +294,7 @@ func (ib *ImageBuilder) Build(ctx context.Context, req *lib.BuildRequest, id goc
 		return "", fmt.Errorf("build was cancelled: %v", ctx.Err())
 	}
 	ib.logf(ctx, "fetching github repo: %v", req.Build.GithubRepo)
-	contents, err := ib.gf.Get(buildSpan, owner, repo, req.Build.Ref)
+	contents, err := ib.gf.Get(parentSpan, owner, repo, req.Build.Ref)
 	if err != nil {
 		return "", fmt.Errorf("error fetching repo: %v", err)
 	}
@@ -378,7 +376,7 @@ const (
 )
 
 // doBuild executes the archive file GET and triggers the Docker build
-func (ib *ImageBuilder) dobuild(ctx context.Context, req *lib.BuildRequest, rbi *RepoBuildData) (string, error) {
+func (ib *ImageBuilder) dobuild(ctx context.Context, req *lib.BuildRequest, rbi *RepoBuildData) (_ string, err error) {
 	var imageid string
 	if buildcontext.IsCancelled(ctx.Done()) {
 		return imageid, fmt.Errorf("build was cancelled: %v", ctx.Err())
@@ -387,7 +385,7 @@ func (ib *ImageBuilder) dobuild(ctx context.Context, req *lib.BuildRequest, rbi 
 	if !ok {
 		return imageid, fmt.Errorf("build id missing from context")
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return imageid, fmt.Errorf("span missing from context")
 	}
@@ -401,6 +399,8 @@ func (ib *ImageBuilder) dobuild(ctx context.Context, req *lib.BuildRequest, rbi 
 		NoCache:     true,
 		BuildArgs:   req.Build.Args,
 	}
+	buildSpan := tracer.StartSpan("image_builder.dobuild", tracer.ChildOf(parentSpan.Context()))
+	defer buildSpan.Finish(tracer.WithError(err))
 	ibr, err := ib.c.ImageBuild(ctx, rbi.Context, opts)
 	if err != nil {
 		dockerBuildStartError := pkgerror.Wrapf(err, "error starting build: ")
@@ -445,7 +445,7 @@ func (ib *ImageBuilder) dobuild(ctx context.Context, req *lib.BuildRequest, rbi 
 		if strings.HasPrefix(dse.Stream, buildSuccessEventPrefix) {
 			imageid = strings.TrimRight(dse.Stream[len(buildSuccessEventPrefix):len(dse.Stream)], "\n")
 			ib.logf(ctx, "built image ID %v", imageid)
-			err = ib.dl.SetBuildTimeMetric(span, id, "docker_build_completed")
+			err = ib.dl.SetBuildTimeMetric(buildSpan, id, "docker_build_completed")
 			if err != nil {
 				return imageid, err
 			}
@@ -538,7 +538,7 @@ func (ib *ImageBuilder) monitorDockerAction(ctx context.Context, rc io.ReadClose
 }
 
 // CleanImage cleans up the built image after it's been pushed
-func (ib *ImageBuilder) CleanImage(ctx context.Context, imageid string) error {
+func (ib *ImageBuilder) CleanImage(ctx context.Context, imageid string) (err error) {
 	if buildcontext.IsCancelled(ctx.Done()) {
 		return fmt.Errorf("clean was cancelled: %v", ctx.Err())
 	}
@@ -546,12 +546,14 @@ func (ib *ImageBuilder) CleanImage(ctx context.Context, imageid string) error {
 	if !ok {
 		return fmt.Errorf("build id missing from context")
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("span missing from context")
 	}
+	cleanSpan := tracer.StartSpan("image_builder.clean", tracer.ChildOf(parentSpan.Context()))
+	defer cleanSpan.Finish(tracer.WithError(err))
 	ib.logf(ctx, "cleaning up images")
-	err := ib.dl.SetBuildTimeMetric(span, id, "clean_started")
+	err = ib.dl.SetBuildTimeMetric(cleanSpan, id, "clean_started")
 	if err != nil {
 		return err
 	}
@@ -566,7 +568,7 @@ func (ib *ImageBuilder) CleanImage(ctx context.Context, imageid string) error {
 	if err != nil {
 		return err
 	}
-	return ib.dl.SetBuildTimeMetric(span, id, "clean_completed")
+	return ib.dl.SetBuildTimeMetric(cleanSpan, id, "clean_completed")
 }
 
 // PushBuildToRegistry pushes the already built image and all associated tags to the
