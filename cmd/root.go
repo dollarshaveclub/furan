@@ -232,9 +232,7 @@ func startDatadogTracer() {
 			log.Fatalf("invalid default metrics tags: %v", defaultMetricsTags)
 		}
 		key, val := keyValPair[0], keyValPair[1]
-		fmt.Printf("setting global tag: key: %v, val :%s", key, val)
 		opts = append(opts, tracer.WithGlobalTag(key, val))
 	}
 	tracer.Start(opts...)
-	fmt.Printf("Started tracer (%v)(%v)\n", datadogServiceName, datadogTracingAgentAddr)
 }

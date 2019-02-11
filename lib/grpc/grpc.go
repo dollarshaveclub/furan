@@ -8,8 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dollarshaveclub/furan/lib/tracing"
-
 	"github.com/dollarshaveclub/furan/generated/lib"
 	"github.com/dollarshaveclub/furan/lib/buildcontext"
 	"github.com/dollarshaveclub/furan/lib/builder"
@@ -313,7 +311,6 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	// Finalize build and send event. Failures should set err and return the appropriate build state.
 	defer func(id gocql.UUID) {
 		failed = outcome == lib.BuildStatusResponse_BUILD_FAILURE || outcome == lib.BuildStatusResponse_PUSH_FAILURE
-
 		flags := map[string]bool{
 			"failed":   failed,
 			"finished": true,
@@ -327,7 +324,6 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 			gr.mc.BuildSucceeded(req.Build.GithubRepo, req.Build.Ref)
 		}
 		rootSpan.Finish(tracer.WithError(err))
-		gr.logf("root span finished (%v)", err)
 		if err := gr.totalDuration(ctx, req); err != nil {
 			gr.logger.Printf("error pushing total duration: %v", err)
 		}
@@ -365,7 +361,6 @@ func (gr *GrpcServer) syncBuild(ctx context.Context, req *lib.BuildRequest) (out
 	}
 	if buildcontext.IsCancelled(ctx.Done()) {
 		err = fmt.Errorf("build was cancelled")
-
 		return lib.BuildStatusResponse_BUILD_FAILURE
 	}
 	err = gr.dl.SetBuildState(rootSpan, id, lib.BuildStatusResponse_BUILDING)
@@ -471,7 +466,6 @@ func (gr *GrpcServer) GetBuildStatus(ctx context.Context, req *lib.BuildStatusRe
 	}
 	resp, err = gr.dl.GetBuildByID(rootSpan, id)
 	if err != nil {
-		rootSpan.Finish(tracer.WithError(err))
 		if err == gocql.ErrNotFound {
 			return nil, grpc.Errorf(codes.InvalidArgument, "build not found")
 		} else {
@@ -483,7 +477,7 @@ func (gr *GrpcServer) GetBuildStatus(ctx context.Context, req *lib.BuildStatusRe
 
 // Reconstruct the stream of events for a build from the data layer
 func (gr *GrpcServer) eventsFromDL(parentSpan tracer.Span, stream lib.FuranExecutor_MonitorBuildServer, id gocql.UUID) error {
-	span := tracing.StartChildSpan("events.from.dl", parentSpan)
+	span := tracer.StartSpan("events.from.dl", tracer.ChildOf(parentSpan.Context()))
 	bo, err := gr.dl.GetBuildOutput(span, id, "build_output")
 	if err != nil {
 		return fmt.Errorf("error getting build output: %v", err)

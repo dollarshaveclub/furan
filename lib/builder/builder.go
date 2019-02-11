@@ -325,7 +325,7 @@ func (ib *ImageBuilder) saveOutput(ctx context.Context, action actionType, event
 	if !ok {
 		return fmt.Errorf("build id missing from context")
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("span missing from context")
 	}
@@ -338,7 +338,7 @@ func (ib *ImageBuilder) saveOutput(ctx context.Context, action actionType, event
 	default:
 		return fmt.Errorf("unknown action: %v", action)
 	}
-	return ib.dl.SaveBuildOutput(span, id, events, column)
+	return ib.dl.SaveBuildOutput(parentSpan, id, events, column)
 }
 
 // saveEventLogToS3 writes a stream of events to S3 and returns the S3 HTTP URL
@@ -463,7 +463,7 @@ func (ib *ImageBuilder) writeDockerImageSizeMetrics(ctx context.Context, imageid
 	if !ok {
 		return fmt.Errorf("build id missing from context")
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return fmt.Errorf("span missing from context")
 	}
@@ -475,7 +475,7 @@ func (ib *ImageBuilder) writeDockerImageSizeMetrics(ctx context.Context, imageid
 	if err != nil {
 		ib.logger.Printf("error pushing image size metrics: %v", err)
 	}
-	return ib.dl.SetDockerImageSizesMetric(span, id, res.Size, res.VirtualSize)
+	return ib.dl.SetDockerImageSizesMetric(parentSpan, id, res.Size, res.VirtualSize)
 }
 
 // Models for the JSON objects the Docker API returns
@@ -653,11 +653,11 @@ func (ib *ImageBuilder) getCommitSHA(ctx context.Context, repo, ref string) (str
 	if len(rl) != 2 {
 		return "", fmt.Errorf("malformed GitHub repo: %v", repo)
 	}
-	span, ok := buildcontext.SpanFromContext(ctx)
+	parentSpan, ok := buildcontext.SpanFromContext(ctx)
 	if !ok {
 		return "", fmt.Errorf("span missing from context")
 	}
-	csha, err := ib.gf.GetCommitSHA(span, rl[0], rl[1], ref)
+	csha, err := ib.gf.GetCommitSHA(parentSpan, rl[0], rl[1], ref)
 	if err != nil {
 		return "", fmt.Errorf("error getting commit SHA: %v", err)
 	}
