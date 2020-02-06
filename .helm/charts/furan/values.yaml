@@ -36,7 +36,8 @@ db:
   useConsulDiscovery: false
   nodes: "furan-scylladb"
   initialize: true
-kafkaBrokers: "furan-kafka-furan:9092"
+#kafkaBrokers: "furan-kafka-furan:9092"
+kafkaBrokers: 'broker-40.kafka.ecommerce.dscinfra.com:9092,broker-50.kafka.ecommerce.dscinfra.com:9092,broker-60.kafka.ecommerce.dscinfra.com:9092' #testing
 
 vault:
   useTokenAuth: true
