@@ -71,7 +71,7 @@ spec:
           - {{ .Values.db.nodes }}
         {{ end }}
           - -f
-          - {{ .Values.kafkaBrokers }}
+          - 'broker-40.kafka.ecommerce.dscinfra.com:9092,broker-50.kafka.ecommerce.dscinfra.com:9092,broker-60.kafka.ecommerce.dscinfra.com:9092'
         {{ if .Values.vault.prefix}}
           - -x
           - {{ .Values.vault.prefix }}
