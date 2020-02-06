@@ -6,7 +6,7 @@ target_branches:
 
 application:
   chart_path: '.helm/charts/furan'
-  chart_vars_repo_path: 'dollarshaveclub/helm-charts@master:releases/kube-uw2-110/furan/dqa.yaml'
+  chart_vars_repo_path: 'dollarshaveclub/helm-charts@furan-broker-update:releases/kube-uw2-110/furan/dqa.yaml'
   image: quay.io/dollarshaveclub/furan
   value_overrides:
     - "resources.requests.memory=100M"
