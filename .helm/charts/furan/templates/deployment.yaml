@@ -110,6 +110,8 @@ spec:
         {{ end }}
           - --consul-addr={{ .Values.consulAddr }}
         env:
+        - name: KAFKA_BROKERS
+          value: {{ .Values.kafkaBrokers }}
         - name: DOCKER_HOST
           value: unix:///var/run/docker.sock
         - name: VAULT_ADDR
