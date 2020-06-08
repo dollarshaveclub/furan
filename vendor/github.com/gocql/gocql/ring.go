@@ -1,6 +1,7 @@
 package gocql
 
 import (
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -52,7 +53,22 @@ func (r *ring) allHosts() []*HostInfo {
 	return hosts
 }
 
+func (r *ring) currentHosts() map[string]*HostInfo {
+	r.mu.RLock()
+	hosts := make(map[string]*HostInfo, len(r.hosts))
+	for k, v := range r.hosts {
+		hosts[k] = v
+	}
+	r.mu.RUnlock()
+	return hosts
+}
+
 func (r *ring) addHost(host *HostInfo) bool {
+	// TODO(zariel): key all host info by HostID instead of
+	// ip addresses
+	if host.invalidConnectAddr() {
+		panic(fmt.Sprintf("invalid host: %v", host))
+	}
 	ip := host.ConnectAddress().String()
 
 	r.mu.Lock()
@@ -79,6 +95,9 @@ func (r *ring) addOrUpdate(host *HostInfo) *HostInfo {
 }
 
 func (r *ring) addHostIfMissing(host *HostInfo) (*HostInfo, bool) {
+	if host.invalidConnectAddr() {
+		panic(fmt.Sprintf("invalid host: %v", host))
+	}
 	ip := host.ConnectAddress().String()
 
 	r.mu.Lock()
@@ -123,8 +142,8 @@ type clusterMetadata struct {
 }
 
 func (c *clusterMetadata) setPartitioner(partitioner string) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.partitioner != partitioner {
 		// TODO: update other things now

@@ -1,9 +1,15 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-2020 Datadog, Inc.
+
 // Package gocql provides functions to trace the gocql/gocql package (https://github.com/gocql/gocql).
 package gocql // import "gopkg.in/DataDog/dd-trace-go.v1/contrib/gocql/gocql"
 
 import (
 	"context"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -18,7 +24,7 @@ import (
 type Query struct {
 	*gocql.Query
 	*params
-	traceContext context.Context
+	ctx context.Context
 }
 
 // Iter inherits from gocql.Iter and contains a span.
@@ -50,14 +56,9 @@ func WrapQuery(q *gocql.Query, opts ...WrapOption) *Query {
 		fn(cfg)
 	}
 	if cfg.resourceName == "" {
-		q := `"` + strings.SplitN(q.String(), "\"", 3)[1] + `"`
-		q, err := strconv.Unquote(q)
-		if err != nil {
-			// avoid having an empty resource as it will cause the trace
-			// to be dropped.
-			q = "_"
+		if parts := strings.SplitN(q.String(), "\"", 3); len(parts) == 3 {
+			cfg.resourceName = parts[1]
 		}
-		cfg.resourceName = q
 	}
 	tq := &Query{q, &params{config: cfg}, context.Background()}
 	return tq
@@ -65,8 +66,8 @@ func WrapQuery(q *gocql.Query, opts ...WrapOption) *Query {
 
 // WithContext adds the specified context to the traced Query structure.
 func (tq *Query) WithContext(ctx context.Context) *Query {
-	tq.traceContext = ctx
-	tq.Query.WithContext(ctx)
+	tq.ctx = ctx
+	tq.Query = tq.Query.WithContext(ctx)
 	return tq
 }
 
@@ -80,14 +81,26 @@ func (tq *Query) PageState(state []byte) *Query {
 // NewChildSpan creates a new span from the params and the context.
 func (tq *Query) newChildSpan(ctx context.Context) ddtrace.Span {
 	p := tq.params
-	span, _ := tracer.StartSpanFromContext(ctx, ext.CassandraQuery,
+	opts := []ddtrace.StartSpanOption{
 		tracer.SpanType(ext.SpanTypeCassandra),
 		tracer.ServiceName(p.config.serviceName),
 		tracer.ResourceName(p.config.resourceName),
 		tracer.Tag(ext.CassandraPaginated, fmt.Sprintf("%t", p.paginated)),
 		tracer.Tag(ext.CassandraKeyspace, p.keyspace),
-	)
+	}
+	if !math.IsNaN(p.config.analyticsRate) {
+		opts = append(opts, tracer.Tag(ext.EventSampleRate, p.config.analyticsRate))
+	}
+	span, _ := tracer.StartSpanFromContext(ctx, ext.CassandraQuery, opts...)
 	return span
+}
+
+func (tq *Query) finishSpan(span ddtrace.Span, err error) {
+	if tq.params.config.noDebugStack {
+		span.Finish(tracer.WithError(err), tracer.NoDebugStack())
+	} else {
+		span.Finish(tracer.WithError(err))
+	}
 }
 
 // Exec is rewritten so that it passes by our custom Iter
@@ -97,31 +110,31 @@ func (tq *Query) Exec() error {
 
 // MapScan wraps in a span query.MapScan call.
 func (tq *Query) MapScan(m map[string]interface{}) error {
-	span := tq.newChildSpan(tq.traceContext)
+	span := tq.newChildSpan(tq.ctx)
 	err := tq.Query.MapScan(m)
-	span.Finish(tracer.WithError(err))
+	tq.finishSpan(span, err)
 	return err
 }
 
 // Scan wraps in a span query.Scan call.
 func (tq *Query) Scan(dest ...interface{}) error {
-	span := tq.newChildSpan(tq.traceContext)
+	span := tq.newChildSpan(tq.ctx)
 	err := tq.Query.Scan(dest...)
-	span.Finish(tracer.WithError(err))
+	tq.finishSpan(span, err)
 	return err
 }
 
 // ScanCAS wraps in a span query.ScanCAS call.
 func (tq *Query) ScanCAS(dest ...interface{}) (applied bool, err error) {
-	span := tq.newChildSpan(tq.traceContext)
+	span := tq.newChildSpan(tq.ctx)
 	applied, err = tq.Query.ScanCAS(dest...)
-	span.Finish(tracer.WithError(err))
+	tq.finishSpan(span, err)
 	return applied, err
 }
 
 // Iter starts a new span at query.Iter call.
 func (tq *Query) Iter() *Iter {
-	span := tq.newChildSpan(tq.traceContext)
+	span := tq.newChildSpan(tq.ctx)
 	iter := tq.Query.Iter()
 	span.SetTag(ext.CassandraRowCount, strconv.Itoa(iter.NumRows()))
 	span.SetTag(ext.CassandraConsistencyLevel, tq.GetConsistency().String())

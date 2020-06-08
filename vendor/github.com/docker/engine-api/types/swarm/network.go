@@ -64,7 +64,6 @@ type NetworkSpec struct {
 	DriverConfiguration *Driver      `json:",omitempty"`
 	IPv6Enabled         bool         `json:",omitempty"`
 	Internal            bool         `json:",omitempty"`
-	Attachable          bool         `json:",omitempty"`
 	IPAMOptions         *IPAMOptions `json:",omitempty"`
 }
 
@@ -93,7 +92,7 @@ type IPAMConfig struct {
 	Gateway string `json:",omitempty"`
 }
 
-// Driver represents a network driver.
+// Driver represents a driver (network/volume).
 type Driver struct {
 	Name    string            `json:",omitempty"`
 	Options map[string]string `json:",omitempty"`

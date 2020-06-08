@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/dollarshaveclub/furan/lib/tagcheck"
+	"github.com/dollarshaveclub/furan/pkg/tagcheck"
 	"github.com/spf13/cobra"
 )
 

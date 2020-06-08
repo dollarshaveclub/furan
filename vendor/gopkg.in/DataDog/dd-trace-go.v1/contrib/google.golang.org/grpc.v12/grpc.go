@@ -1,15 +1,22 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-2020 Datadog, Inc.
+
 //go:generate protoc -I . fixtures_test.proto --go_out=plugins=grpc:.
 
 // Package grpc provides functions to trace the google.golang.org/grpc package v1.2.
 package grpc // import "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc.v12"
 
 import (
+	"math"
 	"net"
 
 	"gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/internal/grpcutil"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	"gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig"
 
 	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -26,21 +33,28 @@ func UnaryServerInterceptor(opts ...InterceptorOption) grpc.UnaryServerIntercept
 	}
 	if cfg.serviceName == "" {
 		cfg.serviceName = "grpc.server"
+		if svc := globalconfig.ServiceName(); svc != "" {
+			cfg.serviceName = svc
+		}
 	}
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		span, ctx := startSpanFromContext(ctx, info.FullMethod, cfg.serviceName)
+		span, ctx := startSpanFromContext(ctx, info.FullMethod, cfg.serviceName, cfg.analyticsRate)
 		resp, err := handler(ctx, req)
 		span.Finish(tracer.WithError(err))
 		return resp, err
 	}
 }
 
-func startSpanFromContext(ctx context.Context, method, service string) (ddtrace.Span, context.Context) {
+func startSpanFromContext(ctx context.Context, method, service string, rate float64) (ddtrace.Span, context.Context) {
 	opts := []ddtrace.StartSpanOption{
 		tracer.ServiceName(service),
 		tracer.ResourceName(method),
 		tracer.Tag(tagMethod, method),
 		tracer.SpanType(ext.AppTypeRPC),
+		tracer.Measured(),
+	}
+	if !math.IsNaN(rate) {
+		opts = append(opts, tracer.Tag(ext.EventSampleRate, rate))
 	}
 	md, _ := metadata.FromContext(ctx) // nil is ok
 	if sctx, err := tracer.Extract(grpcutil.MDCarrier(md)); err == nil {
@@ -64,10 +78,14 @@ func UnaryClientInterceptor(opts ...InterceptorOption) grpc.UnaryClientIntercept
 			span ddtrace.Span
 			p    peer.Peer
 		)
-		span, ctx = tracer.StartSpanFromContext(ctx, "grpc.client",
+		spanopts := []ddtrace.StartSpanOption{
 			tracer.Tag(tagMethod, method),
 			tracer.SpanType(ext.AppTypeRPC),
-		)
+		}
+		if !math.IsNaN(cfg.analyticsRate) {
+			spanopts = append(spanopts, tracer.Tag(ext.EventSampleRate, cfg.analyticsRate))
+		}
+		span, ctx = tracer.StartSpanFromContext(ctx, "grpc.client", spanopts...)
 		md, ok := metadata.FromContext(ctx)
 		if !ok {
 			md = metadata.MD{}

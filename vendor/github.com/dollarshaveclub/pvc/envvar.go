@@ -36,7 +36,8 @@ func (ebg *envVarBackendGetter) sanitizeName(name string) string {
 	f := func(r rune) rune {
 		i := int(r)
 		switch {
-		case (i > 64 && i < 91) || i == 95:
+		// rune is alphanumeric or an underscore
+		case (i > 64 && i < 91) || (i > 47 && i < 58) || i == 95:
 			return r
 		default:
 			return '_'

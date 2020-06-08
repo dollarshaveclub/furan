@@ -9,12 +9,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dollarshaveclub/furan/generated/lib"
-	"github.com/dollarshaveclub/furan/lib/config"
-	"github.com/dollarshaveclub/furan/lib/datalayer"
-	"github.com/dollarshaveclub/furan/lib/db"
-	"github.com/dollarshaveclub/furan/lib/kafka"
-	"github.com/dollarshaveclub/furan/lib/metrics"
+	"github.com/dollarshaveclub/furan/pkg/config"
+	"github.com/dollarshaveclub/furan/pkg/datalayer"
+	"github.com/dollarshaveclub/furan/pkg/db"
+	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
+	"github.com/dollarshaveclub/furan/pkg/kafka"
+	"github.com/dollarshaveclub/furan/pkg/metrics"
 	"github.com/dollarshaveclub/go-lib/cassandra"
 	"github.com/gocql/gocql"
 	consul "github.com/hashicorp/consul/api"
@@ -43,11 +43,11 @@ var datadogTracingAgentAddr string
 var logger *log.Logger
 
 // used by build and trigger commands
-var cliBuildRequest = lib.BuildRequest{
-	Build: &lib.BuildDefinition{},
-	Push: &lib.PushDefinition{
-		Registry: &lib.PushRegistryDefinition{},
-		S3:       &lib.PushS3Definition{},
+var cliBuildRequest = furanrpc.BuildRequest{
+	Build: &furanrpc.BuildDefinition{},
+	Push: &furanrpc.PushDefinition{
+		Registry: &furanrpc.PushRegistryDefinition{},
+		S3:       &furanrpc.PushS3Definition{},
 	},
 }
 var tags string

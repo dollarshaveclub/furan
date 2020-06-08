@@ -25,6 +25,10 @@ type AutopilotConfiguration struct {
 	// be behind before being considered unhealthy.
 	MaxTrailingLogs uint64
 
+	// MinQuorum sets the minimum number of servers allowed in a cluster before
+	// autopilot can prune dead servers.
+	MinQuorum uint
+
 	// ServerStabilizationTime is the minimum amount of time a server must be
 	// in a stable, healthy state before it can be added to the cluster. Only
 	// applicable with Raft protocol version 3 or higher.
@@ -38,6 +42,10 @@ type AutopilotConfiguration struct {
 	// strategy of waiting until enough newer-versioned servers have been added to the
 	// cluster before promoting them to voters.
 	DisableUpgradeMigration bool
+
+	// (Enterprise-only) UpgradeVersionTag is the node tag to use for version info when
+	// performing upgrade migrations. If left blank, the Consul version will be used.
+	UpgradeVersionTag string
 
 	// CreateIndex holds the index corresponding the creation of this configuration.
 	// This is a read-only field.
@@ -126,19 +134,28 @@ func (d *ReadableDuration) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf(`"%s"`, d.Duration().String())), nil
 }
 
-func (d *ReadableDuration) UnmarshalJSON(raw []byte) error {
+func (d *ReadableDuration) UnmarshalJSON(raw []byte) (err error) {
 	if d == nil {
 		return fmt.Errorf("cannot unmarshal to nil pointer")
 	}
 
+	var dur time.Duration
 	str := string(raw)
-	if len(str) < 2 || str[0] != '"' || str[len(str)-1] != '"' {
-		return fmt.Errorf("must be enclosed with quotes: %s", str)
+	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
+		// quoted string
+		dur, err = time.ParseDuration(str[1 : len(str)-1])
+		if err != nil {
+			return err
+		}
+	} else {
+		// no quotes, not a string
+		v, err := strconv.ParseFloat(str, 64)
+		if err != nil {
+			return err
+		}
+		dur = time.Duration(v)
 	}
-	dur, err := time.ParseDuration(str[1 : len(str)-1])
-	if err != nil {
-		return err
-	}
+
 	*d = ReadableDuration(dur)
 	return nil
 }
@@ -192,7 +209,7 @@ func (op *Operator) AutopilotCASConfiguration(conf *AutopilotConfiguration, q *W
 	if _, err := io.Copy(&buf, resp.Body); err != nil {
 		return false, fmt.Errorf("Failed to read response: %v", err)
 	}
-	res := strings.Contains(string(buf.Bytes()), "true")
+	res := strings.Contains(buf.String(), "true")
 
 	return res, nil
 }

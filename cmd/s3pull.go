@@ -11,8 +11,8 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	docker "github.com/docker/engine-api/client"
-	"github.com/dollarshaveclub/furan/lib/s3"
-	"github.com/dollarshaveclub/furan/lib/vault"
+	"github.com/dollarshaveclub/furan/pkg/s3"
+	"github.com/dollarshaveclub/furan/pkg/vault"
 	humanize "github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 )

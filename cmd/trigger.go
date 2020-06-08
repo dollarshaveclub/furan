@@ -3,14 +3,15 @@ package cmd
 import (
 	"crypto/rand"
 	"fmt"
-	"github.com/dollarshaveclub/furan/lib/metrics"
 	"io"
 	"log"
 	"math/big"
 	"os"
 	"time"
 
-	"github.com/dollarshaveclub/furan/generated/lib"
+	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
+	"github.com/dollarshaveclub/furan/pkg/metrics"
+
 	consul "github.com/hashicorp/consul/api"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
@@ -103,7 +104,7 @@ func getFuranServerFromConsul(svc string) (*furanNode, error) {
 }
 
 func triggerFailed(err error, mc metrics.MetricsCollector) {
-	if (mc != nil) {
+	if mc != nil {
 		mc.TriggerCompleted(cliBuildRequest.Build.GithubRepo, cliBuildRequest.Build.Ref, true)
 	}
 	fmt.Fprintf(os.Stderr, "trigger failed: %v", err)
@@ -111,12 +112,11 @@ func triggerFailed(err error, mc metrics.MetricsCollector) {
 }
 
 func triggerSucceeded(mc metrics.MetricsCollector) {
-	if (mc != nil) {
+	if mc != nil {
 		mc.TriggerCompleted(cliBuildRequest.Build.GithubRepo, cliBuildRequest.Build.Ref, false)
 	}
 	os.Exit(0)
 }
-
 
 func trigger(cmd *cobra.Command, args []string) {
 	if remoteFuranHost == "" {
@@ -144,7 +144,7 @@ func trigger(cmd *cobra.Command, args []string) {
 	}
 	defer conn.Close()
 
-	c := lib.NewFuranExecutorClient(conn)
+	c := furanrpc.NewFuranExecutorClient(conn)
 	mc, err := newDatadogCollector()
 	if err != nil {
 		log.Printf("unabled to create datadog collector: %v, continuing...", err)
@@ -161,7 +161,7 @@ func trigger(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	mreq := lib.BuildStatusRequest{
+	mreq := furanrpc.BuildStatusRequest{
 		BuildId: resp.BuildId,
 	}
 
@@ -175,7 +175,7 @@ func trigger(cmd *cobra.Command, args []string) {
 	// poll for build status so we know when a build finishes/fails
 	ticker := time.NewTicker(pollStatusIntervalSecs * time.Second)
 	go func() {
-		sreq := lib.BuildStatusRequest{
+		sreq := furanrpc.BuildStatusRequest{
 			BuildId: resp.BuildId,
 		}
 		for {
@@ -188,7 +188,7 @@ func trigger(cmd *cobra.Command, args []string) {
 				log.Printf("build status: %v", sresp.State.String())
 				if sresp.Finished {
 					if sresp.Failed {
-						triggerFailed	(fmt.Errorf("build failed: %v", err), mc)
+						triggerFailed(fmt.Errorf("build failed: %v", err), mc)
 					}
 					triggerSucceeded(mc)
 				}

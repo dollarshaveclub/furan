@@ -7,7 +7,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/dollarshaveclub/furan/generated/lib"
+	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 )
@@ -20,7 +20,7 @@ var monitorCmd = &cobra.Command{
 	Run:   monitor,
 }
 
-var monitorRequest lib.BuildStatusRequest
+var monitorRequest furanrpc.BuildStatusRequest
 
 func init() {
 	monitorCmd.PersistentFlags().StringVar(&remoteFuranHost, "remote-host", "", "Remote Furan server with gRPC port (eg: furan.me.com:4001)")
@@ -59,7 +59,7 @@ func monitor(cmd *cobra.Command, args []string) {
 	}
 	defer conn.Close()
 
-	c := lib.NewFuranExecutorClient(conn)
+	c := furanrpc.NewFuranExecutorClient(conn)
 	stream, err := c.MonitorBuild(context.Background(), &monitorRequest)
 	if err != nil {
 		clierr("error monitoring build: %v", err)

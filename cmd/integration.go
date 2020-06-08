@@ -9,16 +9,16 @@ import (
 
 	docker "github.com/docker/engine-api/client"
 
-	"github.com/dollarshaveclub/furan/generated/lib"
-	"github.com/dollarshaveclub/furan/lib/buildcontext"
-	"github.com/dollarshaveclub/furan/lib/builder"
-	"github.com/dollarshaveclub/furan/lib/datalayer"
-	githubfetch "github.com/dollarshaveclub/furan/lib/github_fetch"
-	"github.com/dollarshaveclub/furan/lib/kafka"
-	"github.com/dollarshaveclub/furan/lib/s3"
-	"github.com/dollarshaveclub/furan/lib/squasher"
-	"github.com/dollarshaveclub/furan/lib/tagcheck"
-	"github.com/dollarshaveclub/furan/lib/vault"
+	"github.com/dollarshaveclub/furan/pkg/buildcontext"
+	"github.com/dollarshaveclub/furan/pkg/builder"
+	"github.com/dollarshaveclub/furan/pkg/datalayer"
+	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
+	githubfetch "github.com/dollarshaveclub/furan/pkg/github_fetch"
+	"github.com/dollarshaveclub/furan/pkg/kafka"
+	"github.com/dollarshaveclub/furan/pkg/s3"
+	"github.com/dollarshaveclub/furan/pkg/squasher"
+	"github.com/dollarshaveclub/furan/pkg/tagcheck"
+	"github.com/dollarshaveclub/furan/pkg/vault"
 
 	"log"
 
@@ -50,15 +50,15 @@ type IntegrationOptions struct {
 	ECRRegistryHosts []string `json:"ecr_registry_hosts"`
 }
 
-func (iops IntegrationOptions) BuildRequest() *lib.BuildRequest {
-	return &lib.BuildRequest{
-		Build: &lib.BuildDefinition{
+func (iops IntegrationOptions) BuildRequest() *furanrpc.BuildRequest {
+	return &furanrpc.BuildRequest{
+		Build: &furanrpc.BuildDefinition{
 			GithubRepo:       iops.GitHubRepo,
 			Ref:              iops.Ref,
 			TagWithCommitSha: true,
 		},
-		Push: &lib.PushDefinition{
-			Registry: &lib.PushRegistryDefinition{
+		Push: &furanrpc.PushDefinition{
+			Registry: &furanrpc.PushRegistryDefinition{
 				Repo: iops.ImageRepo,
 			},
 		},
@@ -171,7 +171,7 @@ func (it *integrationTester) RunTest(opts IntegrationOptions) {
 
 	req := opts.BuildRequest()
 
-	c := make(chan *lib.BuildEvent, chanCapacity)
+	c := make(chan *furanrpc.BuildEvent, chanCapacity)
 	s := make(chan struct{})
 	defer close(s)
 

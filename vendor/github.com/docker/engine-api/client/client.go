@@ -18,8 +18,6 @@ const DefaultVersion string = "1.23"
 // Client is the API client that performs all operations
 // against a docker server.
 type Client struct {
-	// host holds the server address to connect to
-	host string
 	// proto holds the client protocol i.e. unix.
 	proto string
 	// addr holds the client address.
@@ -92,7 +90,6 @@ func NewClient(host string, version string, client *http.Client, httpHeaders map
 	}
 
 	return &Client{
-		host:              host,
 		proto:             proto,
 		addr:              addr,
 		basePath:          basePath,

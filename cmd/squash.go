@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/dollarshaveclub/furan/lib/squasher"
+	"github.com/dollarshaveclub/furan/pkg/squasher"
 	"github.com/dustin/go-humanize"
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"

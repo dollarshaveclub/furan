@@ -1,14 +1,21 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-2020 Datadog, Inc.
+
 package grpc
 
 import (
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
 	context "golang.org/x/net/context"
 	"google.golang.org/grpc"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 )
 
 type serverStream struct {
 	grpc.ServerStream
-	cfg    *interceptorConfig
+	cfg    *config
 	method string
 	ctx    context.Context
 }
@@ -26,26 +33,40 @@ func (ss *serverStream) Context() context.Context {
 }
 
 func (ss *serverStream) RecvMsg(m interface{}) (err error) {
-	if ss.cfg.traceStreamMessages {
-		span, _ := startSpanFromContext(ss.ctx, ss.method, "grpc.message", ss.cfg.serverServiceName())
-		defer func() { finishWithError(span, err, ss.cfg.noDebugStack) }()
+	if _, ok := ss.cfg.ignoredMethods[ss.method]; ss.cfg.traceStreamMessages && !ok {
+		span, _ := startSpanFromContext(
+			ss.ctx,
+			ss.method,
+			"grpc.message",
+			ss.cfg.serverServiceName(),
+			tracer.AnalyticsRate(ss.cfg.analyticsRate),
+			tracer.Measured(),
+		)
+		defer func() { finishWithError(span, err, ss.cfg) }()
 	}
 	err = ss.ServerStream.RecvMsg(m)
 	return err
 }
 
 func (ss *serverStream) SendMsg(m interface{}) (err error) {
-	if ss.cfg.traceStreamMessages {
-		span, _ := startSpanFromContext(ss.ctx, ss.method, "grpc.message", ss.cfg.serverServiceName())
-		defer func() { finishWithError(span, err, ss.cfg.noDebugStack) }()
+	if _, ok := ss.cfg.ignoredMethods[ss.method]; ss.cfg.traceStreamMessages && !ok {
+		span, _ := startSpanFromContext(
+			ss.ctx,
+			ss.method,
+			"grpc.message",
+			ss.cfg.serverServiceName(),
+			tracer.AnalyticsRate(ss.cfg.analyticsRate),
+			tracer.Measured(),
+		)
+		defer func() { finishWithError(span, err, ss.cfg) }()
 	}
 	err = ss.ServerStream.SendMsg(m)
 	return err
 }
 
 // StreamServerInterceptor will trace streaming requests to the given gRPC server.
-func StreamServerInterceptor(opts ...InterceptorOption) grpc.StreamServerInterceptor {
-	cfg := new(interceptorConfig)
+func StreamServerInterceptor(opts ...Option) grpc.StreamServerInterceptor {
+	cfg := new(config)
 	defaults(cfg)
 	for _, fn := range opts {
 		fn(cfg)
@@ -55,12 +76,26 @@ func StreamServerInterceptor(opts ...InterceptorOption) grpc.StreamServerInterce
 	}
 	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) (err error) {
 		ctx := ss.Context()
-
 		// if we've enabled call tracing, create a span
-		if cfg.traceStreamCalls {
+		if _, ok := cfg.ignoredMethods[info.FullMethod]; cfg.traceStreamCalls && !ok {
 			var span ddtrace.Span
-			span, ctx = startSpanFromContext(ctx, info.FullMethod, "grpc.server", cfg.serviceName)
-			defer func() { finishWithError(span, err, cfg.noDebugStack) }()
+			span, ctx = startSpanFromContext(
+				ctx,
+				info.FullMethod,
+				"grpc.server",
+				cfg.serverServiceName(),
+				tracer.AnalyticsRate(cfg.analyticsRate),
+				tracer.Measured(),
+			)
+			switch {
+			case info.IsServerStream && info.IsClientStream:
+				span.SetTag(tagMethodKind, methodKindBidiStream)
+			case info.IsServerStream:
+				span.SetTag(tagMethodKind, methodKindServerStream)
+			case info.IsClientStream:
+				span.SetTag(tagMethodKind, methodKindClientStream)
+			}
+			defer func() { finishWithError(span, err, cfg) }()
 		}
 
 		// call the original handler with a new stream, which traces each send
@@ -77,16 +112,27 @@ func StreamServerInterceptor(opts ...InterceptorOption) grpc.StreamServerInterce
 }
 
 // UnaryServerInterceptor will trace requests to the given grpc server.
-func UnaryServerInterceptor(opts ...InterceptorOption) grpc.UnaryServerInterceptor {
-	cfg := new(interceptorConfig)
+func UnaryServerInterceptor(opts ...Option) grpc.UnaryServerInterceptor {
+	cfg := new(config)
 	defaults(cfg)
 	for _, fn := range opts {
 		fn(cfg)
 	}
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		span, ctx := startSpanFromContext(ctx, info.FullMethod, "grpc.server", cfg.serverServiceName())
+		if _, ok := cfg.ignoredMethods[info.FullMethod]; ok {
+			return handler(ctx, req)
+		}
+		span, ctx := startSpanFromContext(
+			ctx,
+			info.FullMethod,
+			"grpc.server",
+			cfg.serverServiceName(),
+			tracer.AnalyticsRate(cfg.analyticsRate),
+			tracer.Measured(),
+		)
+		span.SetTag(tagMethodKind, methodKindUnary)
 		resp, err := handler(ctx, req)
-		finishWithError(span, err, cfg.noDebugStack)
+		finishWithError(span, err, cfg)
 		return resp, err
 	}
 }

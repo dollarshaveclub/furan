@@ -15,6 +15,7 @@ package api
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/endpoints"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ecr"
@@ -34,6 +35,7 @@ type ClientFactory interface {
 	NewClient(awsSession *session.Session, awsConfig *aws.Config) Client
 	NewClientWithOptions(opts Options) Client
 	NewClientFromRegion(region string) Client
+	NewClientWithFipsEndpoint(region string) (Client, error)
 	NewClientWithDefaults() Client
 }
 
@@ -54,6 +56,23 @@ func (defaultClientFactory DefaultClientFactory) NewClientWithDefaults() Client 
 		Session: awsSession,
 		Config:  awsConfig,
 	})
+}
+
+// NewClientWithFipsEndpoint overrides the default ECR service endpoint in a given region to use the FIPS endpoint
+func (defaultClientFactory DefaultClientFactory) NewClientWithFipsEndpoint(region string) (Client, error) {
+	awsSession := session.New()
+	awsSession.Handlers.Build.PushBackNamed(userAgentHandler)
+
+	endpoint, err := getServiceEndpoint("ecr-fips", region)
+	if err != nil {
+		return nil, err
+	}
+
+	awsConfig := awsSession.Config.WithEndpoint(endpoint).WithRegion(region)
+	return defaultClientFactory.NewClientWithOptions(Options{
+		Session: awsSession,
+		Config:  awsConfig,
+	}), nil
 }
 
 // NewClientFromRegion uses the region to create the client
@@ -81,4 +100,12 @@ func (defaultClientFactory DefaultClientFactory) NewClientWithOptions(opts Optio
 		ecrClient:       ecr.New(opts.Session, opts.Config),
 		credentialCache: cache.BuildCredentialsCache(opts.Session, aws.StringValue(opts.Config.Region), opts.CacheDir),
 	}
+}
+
+func getServiceEndpoint(service, region string) (string, error) {
+	resolver := endpoints.DefaultResolver()
+	endpoint, err := resolver.EndpointFor(service, region, func(opts *endpoints.Options) {
+		opts.ResolveUnknownService = true
+	})
+	return endpoint.URL, err
 }

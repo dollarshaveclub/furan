@@ -22,19 +22,19 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
-	"github.com/dollarshaveclub/furan/lib/builder"
-	"github.com/dollarshaveclub/furan/lib/config"
-	"github.com/dollarshaveclub/furan/lib/consul"
-	"github.com/dollarshaveclub/furan/lib/gc"
-	githubfetch "github.com/dollarshaveclub/furan/lib/github_fetch"
-	"github.com/dollarshaveclub/furan/lib/grpc"
-	"github.com/dollarshaveclub/furan/lib/httphandlers"
-	flogger "github.com/dollarshaveclub/furan/lib/logger"
-	"github.com/dollarshaveclub/furan/lib/metrics"
-	"github.com/dollarshaveclub/furan/lib/s3"
-	"github.com/dollarshaveclub/furan/lib/squasher"
-	"github.com/dollarshaveclub/furan/lib/tagcheck"
-	"github.com/dollarshaveclub/furan/lib/vault"
+	"github.com/dollarshaveclub/furan/pkg/builder"
+	"github.com/dollarshaveclub/furan/pkg/config"
+	"github.com/dollarshaveclub/furan/pkg/consul"
+	"github.com/dollarshaveclub/furan/pkg/gc"
+	githubfetch "github.com/dollarshaveclub/furan/pkg/github_fetch"
+	"github.com/dollarshaveclub/furan/pkg/grpc"
+	"github.com/dollarshaveclub/furan/pkg/httphandlers"
+	flogger "github.com/dollarshaveclub/furan/pkg/logger"
+	"github.com/dollarshaveclub/furan/pkg/metrics"
+	"github.com/dollarshaveclub/furan/pkg/s3"
+	"github.com/dollarshaveclub/furan/pkg/squasher"
+	"github.com/dollarshaveclub/furan/pkg/tagcheck"
+	"github.com/dollarshaveclub/furan/pkg/vault"
 )
 
 var serverConfig config.Serverconfig
@@ -75,7 +75,7 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&serverConfig.S3ErrorLogBucket, "s3-error-log-bucket", "", "Bucket for S3 error log upload")
 	serverCmd.PersistentFlags().UintVar(&serverConfig.S3PresignTTL, "s3-error-log-presign-ttl", 60*24, "Presigned error log URL TTL in minutes (0 to disable)")
 	serverCmd.PersistentFlags().UintVar(&serverConfig.GCIntervalSecs, "gc-interval", 3600, "GC (garbage collection) interval in seconds")
-	serverCmd.PersistentFlags().StringVar(&serverConfig.DockerDiskPath, "docker-storage-path", "/var/lib/docker", "Path to Docker storage for monitoring free space (optional)")
+	serverCmd.PersistentFlags().StringVar(&serverConfig.DockerDiskPath, "docker-storage-path", "/var/pkg/docker", "Path to Docker storage for monitoring free space (optional)")
 	serverCmd.PersistentFlags().StringVar(&consulConfig.Addr, "consul-addr", "127.0.0.1:8500", "Consul address (IP:port)")
 	serverCmd.PersistentFlags().StringVar(&consulConfig.KVPrefix, "consul-kv-prefix", "furan", "Consul KV prefix")
 	serverCmd.PersistentFlags().BoolVar(&serverConfig.DisableMetrics, "disable-metrics", false, "Disable Datadog metrics collection")

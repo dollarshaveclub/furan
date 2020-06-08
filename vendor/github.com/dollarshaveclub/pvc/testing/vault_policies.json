@@ -1,3 +1,0 @@
-{
-  "tpol": "path \"secret/*\" { policy = \"write\" }"
-}

@@ -11,16 +11,16 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/net/context"
 
-	"github.com/dollarshaveclub/furan/generated/lib"
-	"github.com/dollarshaveclub/furan/lib/builder"
-	"github.com/dollarshaveclub/furan/lib/consul"
-	githubfetch "github.com/dollarshaveclub/furan/lib/github_fetch"
-	"github.com/dollarshaveclub/furan/lib/grpc"
-	"github.com/dollarshaveclub/furan/lib/s3"
-	"github.com/dollarshaveclub/furan/lib/squasher"
-	streamadapter "github.com/dollarshaveclub/furan/lib/stream_adapter"
-	"github.com/dollarshaveclub/furan/lib/tagcheck"
-	"github.com/dollarshaveclub/furan/lib/vault"
+	"github.com/dollarshaveclub/furan/pkg/builder"
+	"github.com/dollarshaveclub/furan/pkg/consul"
+	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
+	githubfetch "github.com/dollarshaveclub/furan/pkg/github_fetch"
+	"github.com/dollarshaveclub/furan/pkg/grpc"
+	"github.com/dollarshaveclub/furan/pkg/s3"
+	"github.com/dollarshaveclub/furan/pkg/squasher"
+	streamadapter "github.com/dollarshaveclub/furan/pkg/stream_adapter"
+	"github.com/dollarshaveclub/furan/pkg/tagcheck"
+	"github.com/dollarshaveclub/furan/pkg/vault"
 )
 
 var buildCmd = &cobra.Command{
@@ -182,7 +182,7 @@ func build(cmd *cobra.Command, args []string) {
 
 	fmt.Fprintf(os.Stdout, "build id: %v\n", resp.BuildId)
 
-	req := &lib.BuildStatusRequest{
+	req := &furanrpc.BuildStatusRequest{
 		BuildId: resp.BuildId,
 	}
 

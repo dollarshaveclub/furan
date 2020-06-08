@@ -1,3 +1,8 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-2020 Datadog, Inc.
+
 //go:generate msgp -unexported -marshal=false -o=span_msgp.go -tests=false
 
 package tracer
@@ -5,14 +10,18 @@ package tracer
 import (
 	"fmt"
 	"reflect"
+	"runtime"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/tinylib/msgp/msgp"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
+
+	"github.com/tinylib/msgp/msgp"
+	"golang.org/x/xerrors"
 )
 
 type (
@@ -29,6 +38,13 @@ var (
 	_ msgp.Encodable = (*spanList)(nil)
 	_ msgp.Decodable = (*spanLists)(nil)
 )
+
+// errorConfig holds customization options for setting error tags.
+type errorConfig struct {
+	noDebugStack bool
+	stackFrames  uint
+	stackSkip    uint
+}
 
 // span represents a computation. Callers must call Finish when a span is
 // complete to ensure it's submitted.
@@ -50,6 +66,7 @@ type span struct {
 
 	finished bool         `msg:"-"` // true if the span has been submitted to a tracer.
 	context  *spanContext `msg:"-"` // span propagation context
+	taskEnd  func()       // ends execution tracer (runtime/trace) task, if started
 }
 
 // Context yields the SpanContext for this Span. Note that the return
@@ -80,26 +97,30 @@ func (s *span) SetTag(key string, value interface{}) {
 	if s.finished {
 		return
 	}
-	if key == ext.Error {
-		s.setTagError(value, true)
+	switch key {
+	case ext.Error:
+		s.setTagError(value, &errorConfig{})
+		return
+	}
+	if v, ok := value.(bool); ok {
+		s.setTagBool(key, v)
 		return
 	}
 	if v, ok := value.(string); ok {
-		s.setTagString(key, v)
+		s.setMeta(key, v)
 		return
 	}
 	if v, ok := toFloat64(value); ok {
-		s.setTagNumeric(key, v)
+		s.setMetric(key, v)
 		return
 	}
-	// not numeric, not a string and not an error, the likelihood of this
-	// happening is close to zero, but we should nevertheless account for it.
-	s.Meta[key] = fmt.Sprint(value)
+	// not numeric, not a string, not a bool, and not an error
+	s.setMeta(key, fmt.Sprint(value))
 }
 
 // setTagError sets the error tag. It accounts for various valid scenarios.
 // This method is not safe for concurrent use.
-func (s *span) setTagError(value interface{}, debugStack bool) {
+func (s *span) setTagError(value interface{}, cfg *errorConfig) {
 	if s.finished {
 		return
 	}
@@ -115,10 +136,21 @@ func (s *span) setTagError(value interface{}, debugStack bool) {
 		// if anyone sets an error value as the tag, be nice here
 		// and provide all the benefits.
 		s.Error = 1
-		s.Meta[ext.ErrorMsg] = v.Error()
-		s.Meta[ext.ErrorType] = reflect.TypeOf(v).String()
-		if debugStack {
-			s.Meta[ext.ErrorStack] = string(debug.Stack())
+		s.setMeta(ext.ErrorMsg, v.Error())
+		s.setMeta(ext.ErrorType, reflect.TypeOf(v).String())
+		if !cfg.noDebugStack {
+			if cfg.stackFrames == 0 {
+				s.setMeta(ext.ErrorStack, string(debug.Stack()))
+			} else {
+				s.setMeta(ext.ErrorStack, takeStacktrace(cfg.stackFrames, cfg.stackSkip))
+			}
+		}
+		switch v.(type) {
+		case xerrors.Formatter:
+			s.setMeta(ext.ErrorDetails, fmt.Sprintf("%+v", v))
+		case fmt.Formatter:
+			// pkg/errors approach
+			s.setMeta(ext.ErrorDetails, fmt.Sprintf("%+v", v))
 		}
 	case nil:
 		// no error
@@ -130,9 +162,43 @@ func (s *span) setTagError(value interface{}, debugStack bool) {
 	}
 }
 
-// setTagString sets a string tag. This method is not safe for concurrent use.
-func (s *span) setTagString(key, v string) {
+// takeStacktrace takes stacktrace
+func takeStacktrace(n, skip uint) string {
+	var builder strings.Builder
+	pcs := make([]uintptr, n)
+
+	// +2 to exclude runtime.Callers and takeStacktrace
+	numFrames := runtime.Callers(2+int(skip), pcs)
+	if numFrames == 0 {
+		return ""
+	}
+	frames := runtime.CallersFrames(pcs[:numFrames])
+	for i := 0; ; i++ {
+		frame, more := frames.Next()
+		if i != 0 {
+			builder.WriteByte('\n')
+		}
+		builder.WriteString(frame.Function)
+		builder.WriteByte('\n')
+		builder.WriteByte('\t')
+		builder.WriteString(frame.File)
+		builder.WriteByte(':')
+		builder.WriteString(strconv.Itoa(frame.Line))
+		if !more {
+			break
+		}
+	}
+	return builder.String()
+}
+
+// setMeta sets a string tag. This method is not safe for concurrent use.
+func (s *span) setMeta(key, v string) {
+	if s.Meta == nil {
+		s.Meta = make(map[string]string, 1)
+	}
 	switch key {
+	case ext.SpanName:
+		s.Name = v
 	case ext.ServiceName:
 		s.Service = v
 	case ext.ResourceName:
@@ -144,9 +210,38 @@ func (s *span) setTagString(key, v string) {
 	}
 }
 
-// setTagNumeric sets a numeric tag, in our case called a metric. This method
+// setTagBool sets a boolean tag on the span.
+func (s *span) setTagBool(key string, v bool) {
+	switch key {
+	case ext.AnalyticsEvent:
+		if v {
+			s.setMetric(ext.EventSampleRate, 1.0)
+		} else {
+			s.setMetric(ext.EventSampleRate, 0.0)
+		}
+	case ext.ManualDrop:
+		if v {
+			s.setMetric(ext.SamplingPriority, ext.PriorityUserReject)
+		}
+	case ext.ManualKeep:
+		if v {
+			s.setMetric(ext.SamplingPriority, ext.PriorityUserKeep)
+		}
+	default:
+		if v {
+			s.setMeta(key, "true")
+		} else {
+			s.setMeta(key, "false")
+		}
+	}
+}
+
+// setMetric sets a numeric tag, in our case called a metric. This method
 // is not safe for concurrent use.
-func (s *span) setTagNumeric(key string, v float64) {
+func (s *span) setMetric(key string, v float64) {
+	if s.Metrics == nil {
+		s.Metrics = make(map[string]float64, 1)
+	}
 	switch key {
 	case ext.SamplingPriority:
 		// setting sampling priority per spec
@@ -160,20 +255,27 @@ func (s *span) setTagNumeric(key string, v float64) {
 // Finish closes this Span (but not its children) providing the duration
 // of its part of the tracing session.
 func (s *span) Finish(opts ...ddtrace.FinishOption) {
-	var cfg ddtrace.FinishConfig
-	for _, fn := range opts {
-		fn(&cfg)
+	t := now()
+	if len(opts) > 0 {
+		var cfg ddtrace.FinishConfig
+		for _, fn := range opts {
+			fn(&cfg)
+		}
+		if !cfg.FinishTime.IsZero() {
+			t = cfg.FinishTime.UnixNano()
+		}
+		if cfg.Error != nil {
+			s.Lock()
+			s.setTagError(cfg.Error, &errorConfig{
+				noDebugStack: cfg.NoDebugStack,
+				stackFrames:  cfg.StackFrames,
+				stackSkip:    cfg.SkipStackFrames,
+			})
+			s.Unlock()
+		}
 	}
-	var t int64
-	if cfg.FinishTime.IsZero() {
-		t = now()
-	} else {
-		t = cfg.FinishTime.UnixNano()
-	}
-	if cfg.Error != nil {
-		s.Lock()
-		s.setTagError(cfg.Error, !cfg.NoDebugStack)
-		s.Unlock()
+	if s.taskEnd != nil {
+		s.taskEnd()
 	}
 	s.finish(t)
 }
@@ -236,7 +338,11 @@ func (s *span) String() string {
 }
 
 const (
-	keySamplingPriority     = "_sampling_priority_v1"
-	keySamplingPriorityRate = "_sampling_priority_rate_v1"
-	keyOrigin               = "_dd.origin"
+	keySamplingPriority        = "_sampling_priority_v1"
+	keySamplingPriorityRate    = "_sampling_priority_rate_v1"
+	keyOrigin                  = "_dd.origin"
+	keyHostname                = "_dd.hostname"
+	keyRulesSamplerAppliedRate = "_dd.rule_psr"
+	keyRulesSamplerLimiterRate = "_dd.limit_psr"
+	keyMeasured                = "_dd.measured"
 )

@@ -74,10 +74,6 @@ func imageBuildOptionsToQuery(options types.ImageBuildOptions) (url.Values, erro
 		query.Set("pull", "1")
 	}
 
-	if options.Squash {
-		query.Set("squash", "1")
-	}
-
 	if !container.Isolation.IsDefault(options.Isolation) {
 		query.Set("isolation", string(options.Isolation))
 	}

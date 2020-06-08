@@ -1,3 +1,8 @@
+// Unless explicitly stated otherwise all files in this repository are licensed
+// under the Apache License Version 2.0.
+// This product includes software developed at Datadog (https://www.datadoghq.com/).
+// Copyright 2016-2020 Datadog, Inc.
+
 package ext // import "gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
 
 // App types determine how to categorize a trace in the Datadog application.
@@ -67,4 +72,7 @@ const (
 
 	// SpanTypeMessageProducer marks a span as a queue operation.
 	SpanTypeMessageProducer = "queue"
+
+	// SpanTypeConsul marks a span as a Consul operation.
+	SpanTypeConsul = "consul"
 )
