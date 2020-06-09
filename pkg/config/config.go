@@ -3,7 +3,6 @@ package config
 import (
 	dtypes "github.com/docker/engine-api/types"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
-	"github.com/dollarshaveclub/furan/pkg/kafka"
 	"github.com/gocql/gocql"
 )
 
@@ -37,13 +36,6 @@ type Dockerconfig struct {
 
 func (dc *Dockerconfig) Setup() {
 	dc.DockercfgContents = make(map[string]dtypes.AuthConfig)
-}
-
-type Kafkaconfig struct {
-	Brokers      []string
-	Topic        string
-	Manager      kafka.EventBusManager
-	MaxOpenSends uint
 }
 
 // AWSConfig contains all information needed to access AWS services

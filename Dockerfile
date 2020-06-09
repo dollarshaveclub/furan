@@ -1,9 +1,15 @@
-FROM quay.io/dollarshaveclub/golang-protobuf:master
+FROM golang:1.14-alpine
 
-RUN mkdir -p /go/src/github.com/dollarshaveclub/furan
-ADD . /go/src/github.com/dollarshaveclub/furan
+COPY . /tmp/furan
+RUN cd /tmp/furan && \
+CGO_ENABLED=0 go build -mod=vendor
 
-WORKDIR /go/src/github.com/dollarshaveclub/furan
-RUN ./docker-build.sh
+FROM alpine:3.11
 
-CMD ["/go/bin/furan"]
+RUN mkdir -p /opt/migrations && \
+apk --no-cache add ca-certificates && apk --no-cache upgrade
+COPY --from=0 /tmp/furan/furan /usr/local/bin/furan
+
+ENV MIGRATIONS_PATH /opt/migrations
+
+CMD ["/usr/local/bin/furan"]

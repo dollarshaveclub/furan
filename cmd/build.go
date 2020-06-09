@@ -1,26 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-	"log"
-	"os"
-	"os/signal"
 	"strings"
 
-	docker "github.com/docker/engine-api/client"
 	"github.com/spf13/cobra"
-	"golang.org/x/net/context"
-
-	"github.com/dollarshaveclub/furan/pkg/builder"
-	"github.com/dollarshaveclub/furan/pkg/consul"
-	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
-	githubfetch "github.com/dollarshaveclub/furan/pkg/github_fetch"
-	"github.com/dollarshaveclub/furan/pkg/grpc"
-	"github.com/dollarshaveclub/furan/pkg/s3"
-	"github.com/dollarshaveclub/furan/pkg/squasher"
-	streamadapter "github.com/dollarshaveclub/furan/pkg/stream_adapter"
-	"github.com/dollarshaveclub/furan/pkg/tagcheck"
-	"github.com/dollarshaveclub/furan/pkg/vault"
 )
 
 var buildCmd = &cobra.Command{
@@ -37,14 +20,6 @@ DOCKER_TLS_VERIFY
 DOCKER_CERT_PATH
 `,
 	PreRun: func(cmd *cobra.Command, args []string) {
-		if buildS3ErrorLogs {
-			if buildS3ErrorLogBucket == "" {
-				clierr("S3 error log bucket must be defined")
-			}
-			if buildS3ErrorLogRegion == "" {
-				clierr("S3 error log region must be defined")
-			}
-		}
 	},
 	Run: build,
 }
@@ -107,88 +82,4 @@ func buildArgsFromSlice(args []string) map[string]string {
 }
 
 func build(cmd *cobra.Command, args []string) {
-	ctx, cancel := context.WithCancel(context.Background())
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for _ = range c {
-			cancel()
-			os.Exit(1)
-			return
-		}
-	}()
-
-	validateCLIBuildRequest()
-	vault.SetupVault(&vaultConfig, &awsConfig, &dockerConfig, &gitConfig, &serverConfig, awscredsprefix)
-	setupDB(initializeDB)
-
-	dnull, err := os.Open(os.DevNull)
-	if err != nil {
-		clierr("error opening %v: %v", os.DevNull, err)
-	}
-	defer dnull.Close()
-
-	logger = log.New(dnull, "", log.LstdFlags)
-	clogger := log.New(os.Stderr, "", log.LstdFlags)
-
-	mc, err := newDatadogCollector()
-	if err != nil {
-		log.Fatalf("error creating Datadog collector: %v", err)
-	}
-	setupKafka(mc)
-	err = getDockercfg()
-	if err != nil {
-		clierr("Error getting dockercfg: %v", err)
-	}
-
-	gf := githubfetch.NewGitHubFetcher(gitConfig.Token)
-	dc, err := docker.NewEnvClient()
-	if err != nil {
-		clierr("error creating Docker client: %v", err)
-	}
-
-	osm := s3.NewS3StorageManager(awsConfig, mc, clogger)
-	is := squasher.NewDockerImageSquasher(clogger)
-	itc := tagcheck.NewRegistryTagChecker(&dockerConfig, logger.Printf)
-	s3errcfg := builder.S3ErrorLogConfig{
-		PushToS3:          buildS3ErrorLogs,
-		Region:            buildS3ErrorLogRegion,
-		Bucket:            buildS3ErrorLogBucket,
-		PresignTTLMinutes: buildS3ErrorLogsPresignTTL,
-	}
-
-	ib, err := builder.NewImageBuilder(kafkaConfig.Manager, dbConfig.Datalayer, gf, dc, mc, osm, is, itc, dockerConfig.DockercfgContents, s3errcfg, logger)
-	if err != nil {
-		clierr("error creating image builder: %v", err)
-	}
-
-	if awsConfig.EnableECR {
-		ib.SetECRConfig(awsConfig.AccessKeyID, awsConfig.SecretAccessKey, awsConfig.ECRRegistryHosts)
-	}
-
-	kvo, err := consul.NewConsulKVOrchestrator(&consulConfig)
-	if err != nil {
-		clierr("error creating key value orchestrator: %v", err)
-	}
-
-	logger = log.New(dnull, "", log.LstdFlags)
-	datadogGrpcServiceName := datadogServiceName + ".grpc"
-	gs := grpc.NewGRPCServer(ib, dbConfig.Datalayer, kafkaConfig.Manager, kafkaConfig.Manager, mc, kvo, 1, 1, logger, datadogGrpcServiceName)
-
-	resp, err := gs.StartBuild(ctx, &cliBuildRequest)
-	if err != nil {
-		clierr("error running build: %v", err)
-	}
-
-	fmt.Fprintf(os.Stdout, "build id: %v\n", resp.BuildId)
-
-	req := &furanrpc.BuildStatusRequest{
-		BuildId: resp.BuildId,
-	}
-
-	ls := streamadapter.NewLocalServerStream(ctx, os.Stdout)
-	err = gs.MonitorBuild(req, ls)
-	if err != nil {
-		clierr("error monitoring build: %v", err)
-	}
 }

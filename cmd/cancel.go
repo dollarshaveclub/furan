@@ -1,14 +1,9 @@
 package cmd
 
 import (
-	"fmt"
-	"log"
-	"time"
+	"github.com/spf13/cobra"
 
 	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
-	"github.com/spf13/cobra"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 )
 
 // triggerCmd represents the trigger command
@@ -30,39 +25,4 @@ func init() {
 }
 
 func cancel(cmd *cobra.Command, args []string) {
-	if remoteFuranHost == "" {
-		if !discoverFuranHost || consulFuranSvcName == "" {
-			clierr("remote host or consul discovery is required")
-		}
-	}
-
-	if cancelReq.BuildId == "" {
-		clierr("build ID is required")
-	}
-
-	var remoteHost string
-	if discoverFuranHost {
-		n, err := getFuranServerFromConsul(consulFuranSvcName)
-		if err != nil {
-			clierr("error discovering Furan hosts: %v", err)
-		}
-		remoteHost = fmt.Sprintf("%v:%v", n.addr, n.port)
-	} else {
-		remoteHost = remoteFuranHost
-	}
-
-	log.Printf("connecting to %v", remoteHost)
-	conn, err := grpc.Dial(remoteHost, grpc.WithInsecure(), grpc.WithBlock(), grpc.WithTimeout(connTimeoutSecs*time.Second))
-	if err != nil {
-		clierr("error connecting to remote host: %v", err)
-	}
-	defer conn.Close()
-
-	c := furanrpc.NewFuranExecutorClient(conn)
-
-	resp, err := c.CancelBuild(context.Background(), cancelReq)
-	if err != nil {
-		rpcerr(err, "CancelBuild", nil)
-	}
-	log.Printf("%v\n", *resp)
 }
