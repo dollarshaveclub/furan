@@ -1,32 +1,14 @@
 # github.com/DataDog/datadog-go v3.7.1+incompatible
 ## explicit
 github.com/DataDog/datadog-go/statsd
-# github.com/Sirupsen/logrus v1.0.0
-## explicit
-github.com/Sirupsen/logrus
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
-# github.com/docker/docker v1.13.1
+# github.com/docker/docker v1.13.1 => github.com/docker/engine v17.12.0-ce-rc1.0.20190717161051-705d9623b7c1+incompatible
 ## explicit
 github.com/docker/docker/builder/dockerignore
 github.com/docker/docker/pkg/fileutils
 # github.com/docker/engine-api v0.4.0
 ## explicit
-github.com/docker/engine-api/types
-github.com/docker/engine-api/types/blkiodev
-github.com/docker/engine-api/types/container
-github.com/docker/engine-api/types/filters
-github.com/docker/engine-api/types/network
-github.com/docker/engine-api/types/registry
-github.com/docker/engine-api/types/strslice
-github.com/docker/engine-api/types/swarm
-github.com/docker/engine-api/types/versions
-# github.com/docker/go-connections v0.4.0
-## explicit
-github.com/docker/go-connections/nat
-# github.com/docker/go-units v0.4.0
-## explicit
-github.com/docker/go-units
 # github.com/dollarshaveclub/go-lib v0.0.0-20190204215653-e1198155e764
 ## explicit
 github.com/dollarshaveclub/go-lib/cassandra
@@ -44,6 +26,15 @@ github.com/gocql/gocql
 github.com/gocql/gocql/internal/lru
 github.com/gocql/gocql/internal/murmur
 github.com/gocql/gocql/internal/streams
+# github.com/golang-migrate/migrate/v4 v4.11.0
+## explicit
+github.com/golang-migrate/migrate/v4
+github.com/golang-migrate/migrate/v4/database
+github.com/golang-migrate/migrate/v4/database/postgres
+github.com/golang-migrate/migrate/v4/internal/url
+github.com/golang-migrate/migrate/v4/source
+github.com/golang-migrate/migrate/v4/source/file
+github.com/golang-migrate/migrate/v4/source/httpfs
 # github.com/golang/mock v1.4.3
 ## explicit
 # github.com/golang/protobuf v1.4.2
@@ -56,15 +47,18 @@ github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
 # github.com/golang/snappy v0.0.1
 github.com/golang/snappy
+# github.com/google/go-cmp v0.4.1
+## explicit
 # github.com/google/go-github v17.0.0+incompatible
 ## explicit
 github.com/google/go-github/github
 # github.com/google/go-querystring v1.0.0
-## explicit
 github.com/google/go-querystring/query
 # github.com/gorilla/mux v1.7.4
 ## explicit
 github.com/gorilla/mux
+# github.com/gotestyourself/gotestyourself v1.4.0
+## explicit
 # github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
 github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.4.0
@@ -78,9 +72,10 @@ github.com/hashicorp/go-cleanhttp
 github.com/hashicorp/go-hclog
 # github.com/hashicorp/go-immutable-radix v1.0.0
 github.com/hashicorp/go-immutable-radix
-# github.com/hashicorp/go-multierror v1.0.0
+# github.com/hashicorp/go-multierror v1.1.0
 github.com/hashicorp/go-multierror
-# github.com/hashicorp/go-retryablehttp v0.5.4
+# github.com/hashicorp/go-retryablehttp v0.6.6
+## explicit
 github.com/hashicorp/go-retryablehttp
 # github.com/hashicorp/go-rootcerts v1.0.2
 github.com/hashicorp/go-rootcerts
@@ -114,6 +109,12 @@ github.com/hashicorp/vault/sdk/helper/parseutil
 github.com/hashicorp/vault/sdk/helper/strutil
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/konsorten/go-windows-terminal-sequences v1.0.2
+github.com/konsorten/go-windows-terminal-sequences
+# github.com/lib/pq v1.3.0
+github.com/lib/pq
+github.com/lib/pq/oid
+github.com/lib/pq/scram
 # github.com/mattn/go-colorable v0.1.4
 github.com/mattn/go-colorable
 # github.com/mattn/go-isatty v0.0.12
@@ -136,6 +137,8 @@ github.com/pierrec/lz4/internal/xxh32
 github.com/pkg/errors
 # github.com/ryanuber/go-glob v1.0.0
 github.com/ryanuber/go-glob
+# github.com/sirupsen/logrus v1.4.2
+github.com/sirupsen/logrus
 # github.com/spf13/cobra v1.0.0
 ## explicit
 github.com/spf13/cobra
@@ -146,7 +149,7 @@ github.com/spf13/pflag
 # github.com/tinylib/msgp v1.1.2
 ## explicit
 github.com/tinylib/msgp/msgp
-# golang.org/x/crypto v0.0.0-20200204104054-c9f3fb736b72
+# golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9
 ## explicit
 golang.org/x/crypto/ed25519
 golang.org/x/crypto/ed25519/internal/edwards25519
@@ -167,23 +170,24 @@ golang.org/x/oauth2
 golang.org/x/oauth2/internal
 # golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
 ## explicit
-# golang.org/x/sys v0.0.0-20200519105757-fe76b779f299
+# golang.org/x/sys v0.0.0-20200610111108-226ff32320da
 ## explicit
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
-## explicit
 golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
-# golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+# golang.org/x/time v0.0.0-20200416051211-89c76fbcd5d1
+## explicit
 golang.org/x/time/rate
 # golang.org/x/xerrors v0.0.0-20191204190536-9bdfabe68543
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
-# google.golang.org/appengine v1.4.0
+# google.golang.org/appengine v1.6.6
+## explicit
 google.golang.org/appengine/internal
 google.golang.org/appengine/internal/base
 google.golang.org/appengine/internal/datastore
@@ -191,7 +195,8 @@ google.golang.org/appengine/internal/log
 google.golang.org/appengine/internal/remote_api
 google.golang.org/appengine/internal/urlfetch
 google.golang.org/appengine/urlfetch
-# google.golang.org/genproto v0.0.0-20190819201941-24fa4b261c55
+# google.golang.org/genproto v0.0.0-20200610104632-a5b850bcf112
+## explicit
 google.golang.org/genproto/googleapis/rpc/status
 # google.golang.org/grpc v1.29.1
 ## explicit
@@ -234,7 +239,7 @@ google.golang.org/grpc/serviceconfig
 google.golang.org/grpc/stats
 google.golang.org/grpc/status
 google.golang.org/grpc/tap
-# google.golang.org/protobuf v1.23.0
+# google.golang.org/protobuf v1.24.0
 google.golang.org/protobuf/encoding/protojson
 google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
@@ -290,4 +295,7 @@ gopkg.in/square/go-jose.v2/json
 gopkg.in/square/go-jose.v2/jwt
 # gopkg.in/yaml.v2 v2.3.0
 ## explicit
+# gotest.tools v1.4.0
+## explicit
+# github.com/docker/docker => github.com/docker/engine v17.12.0-ce-rc1.0.20190717161051-705d9623b7c1+incompatible
 # github.com/Sirupsen/logrus v1.4.2 => github.com/sirupsen/logrus v1.4.2
