@@ -3,16 +3,13 @@
 github.com/DataDog/datadog-go/statsd
 # github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da
 github.com/armon/go-metrics
+# github.com/davecgh/go-spew v1.1.1
+## explicit
+github.com/davecgh/go-spew/spew
 # github.com/docker/docker v1.13.1 => github.com/docker/engine v17.12.0-ce-rc1.0.20190717161051-705d9623b7c1+incompatible
 ## explicit
 github.com/docker/docker/builder/dockerignore
 github.com/docker/docker/pkg/fileutils
-# github.com/docker/engine-api v0.4.0
-## explicit
-# github.com/dollarshaveclub/go-lib v0.0.0-20190204215653-e1198155e764
-## explicit
-github.com/dollarshaveclub/go-lib/cassandra
-github.com/dollarshaveclub/go-lib/set
 # github.com/dollarshaveclub/pvc v0.0.0-20190128210719-5ec81720bc8a
 ## explicit
 github.com/dollarshaveclub/pvc
@@ -20,12 +17,9 @@ github.com/dollarshaveclub/pvc
 github.com/fatih/color
 # github.com/frankban/quicktest v1.7.2
 ## explicit
-# github.com/gocql/gocql v0.0.0-20200608162118-cb62e193e52b
+# github.com/gofrs/uuid v3.3.0+incompatible
 ## explicit
-github.com/gocql/gocql
-github.com/gocql/gocql/internal/lru
-github.com/gocql/gocql/internal/murmur
-github.com/gocql/gocql/internal/streams
+github.com/gofrs/uuid
 # github.com/golang-migrate/migrate/v4 v4.11.0
 ## explicit
 github.com/golang-migrate/migrate/v4
@@ -59,8 +53,6 @@ github.com/google/go-querystring/query
 github.com/gorilla/mux
 # github.com/gotestyourself/gotestyourself v1.4.0
 ## explicit
-# github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed
-github.com/hailocab/go-hostpool
 # github.com/hashicorp/consul/api v1.4.0
 ## explicit
 github.com/hashicorp/consul/api
@@ -109,6 +101,32 @@ github.com/hashicorp/vault/sdk/helper/parseutil
 github.com/hashicorp/vault/sdk/helper/strutil
 # github.com/inconshreveable/mousetrap v1.0.0
 github.com/inconshreveable/mousetrap
+# github.com/jackc/chunkreader/v2 v2.0.1
+github.com/jackc/chunkreader/v2
+# github.com/jackc/pgconn v1.5.0
+## explicit
+github.com/jackc/pgconn
+github.com/jackc/pgconn/internal/ctxwatch
+github.com/jackc/pgconn/stmtcache
+# github.com/jackc/pgio v1.0.0
+github.com/jackc/pgio
+# github.com/jackc/pgpassfile v1.0.0
+github.com/jackc/pgpassfile
+# github.com/jackc/pgproto3/v2 v2.0.1
+github.com/jackc/pgproto3/v2
+# github.com/jackc/pgservicefile v0.0.0-20200307190119-3430c5407db8
+github.com/jackc/pgservicefile
+# github.com/jackc/pgtype v1.3.0
+## explicit
+github.com/jackc/pgtype
+github.com/jackc/pgtype/ext/gofrs-uuid
+# github.com/jackc/pgx/v4 v4.6.0
+## explicit
+github.com/jackc/pgx/v4
+github.com/jackc/pgx/v4/internal/sanitize
+github.com/jackc/pgx/v4/pgxpool
+# github.com/jackc/puddle v1.1.0
+github.com/jackc/puddle
 # github.com/konsorten/go-windows-terminal-sequences v1.0.2
 github.com/konsorten/go-windows-terminal-sequences
 # github.com/lib/pq v1.3.0
@@ -144,8 +162,6 @@ github.com/sirupsen/logrus
 github.com/spf13/cobra
 # github.com/spf13/pflag v1.0.3
 github.com/spf13/pflag
-# github.com/stretchr/testify v1.5.1
-## explicit
 # github.com/tinylib/msgp v1.1.2
 ## explicit
 github.com/tinylib/msgp/msgp
@@ -176,10 +192,19 @@ golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
 # golang.org/x/text v0.3.2
+golang.org/x/text/cases
+golang.org/x/text/internal
+golang.org/x/text/internal/language
+golang.org/x/text/internal/language/compact
+golang.org/x/text/internal/tag
+golang.org/x/text/language
+golang.org/x/text/runes
 golang.org/x/text/secure/bidirule
+golang.org/x/text/secure/precis
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+golang.org/x/text/width
 # golang.org/x/time v0.0.0-20200416051211-89c76fbcd5d1
 ## explicit
 golang.org/x/time/rate
@@ -275,7 +300,6 @@ google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
 # gopkg.in/DataDog/dd-trace-go.v1 v1.24.1
 ## explicit
-gopkg.in/DataDog/dd-trace-go.v1/contrib/gocql/gocql
 gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc
 gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc.v12
 gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/internal/grpcutil
@@ -286,8 +310,6 @@ gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer
 gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig
 gopkg.in/DataDog/dd-trace-go.v1/internal/log
 gopkg.in/DataDog/dd-trace-go.v1/internal/version
-# gopkg.in/inf.v0 v0.9.1
-gopkg.in/inf.v0
 # gopkg.in/square/go-jose.v2 v2.3.1
 gopkg.in/square/go-jose.v2
 gopkg.in/square/go-jose.v2/cipher

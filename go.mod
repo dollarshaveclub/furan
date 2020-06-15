@@ -8,11 +8,11 @@ replace github.com/Sirupsen/logrus v1.4.2 => github.com/sirupsen/logrus v1.4.2
 
 require (
 	github.com/DataDog/datadog-go v3.7.1+incompatible
+	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v1.13.1
-	github.com/dollarshaveclub/go-lib v0.0.0-20190204215653-e1198155e764
 	github.com/dollarshaveclub/pvc v0.0.0-20190128210719-5ec81720bc8a
 	github.com/frankban/quicktest v1.7.2 // indirect
-	github.com/gocql/gocql v0.0.0-20200608162118-cb62e193e52b
+	github.com/gofrs/uuid v3.3.0+incompatible
 	github.com/golang-migrate/migrate/v4 v4.11.0
 	github.com/golang/mock v1.4.3 // indirect
 	github.com/golang/protobuf v1.4.2
@@ -24,12 +24,14 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.6.6 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
 	github.com/hashicorp/vault/api v1.0.4 // indirect
+	github.com/jackc/pgconn v1.5.0
+	github.com/jackc/pgtype v1.3.0
+	github.com/jackc/pgx/v4 v4.6.0
 	github.com/opentracing/opentracing-go v1.1.0 // indirect
 	github.com/philhofer/fwd v1.0.0 // indirect
 	github.com/pierrec/lz4 v2.4.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1
 	github.com/spf13/cobra v1.0.0
-	github.com/stretchr/testify v1.5.1 // indirect
 	github.com/tinylib/msgp v1.1.2 // indirect
 	golang.org/x/crypto v0.0.0-20200604202706-70a84ac30bf9 // indirect
 	golang.org/x/net v0.0.0-20200602114024-627f9648deb9

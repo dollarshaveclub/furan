@@ -33,9 +33,6 @@ func init() {
 	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Build.Ref, "source-ref", "master", "source git ref")
 	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Build.DockerfilePath, "dockerfile-path", "Dockerfile", "Dockerfile path (optional)")
 	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Push.Registry.Repo, "image-repo", "", "push to image repo")
-	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Push.S3.Region, "s3-region", "", "S3 region")
-	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Push.S3.Bucket, "s3-bucket", "", "S3 bucket")
-	buildCmd.PersistentFlags().StringVar(&cliBuildRequest.Push.S3.KeyPrefix, "s3-key-prefix", "", "S3 key prefix")
 	buildCmd.PersistentFlags().StringVar(&tags, "tags", "master", "image tags (optional, comma-delimited)")
 	buildCmd.PersistentFlags().BoolVar(&cliBuildRequest.Build.TagWithCommitSha, "tag-sha", false, "additionally tag with git commit SHA (optional)")
 	buildCmd.PersistentFlags().BoolVar(&buildS3ErrorLogs, "s3-error-logs", false, "Upload failed build logs to S3 (region and bucket must be specified)")
@@ -52,10 +49,7 @@ func validateCLIBuildRequest() {
 	cliBuildRequest.Build.Tags = strings.Split(tags, ",")
 	cliBuildRequest.Build.Args = buildArgsFromSlice(buildArgs)
 
-	if cliBuildRequest.Push.Registry.Repo == "" &&
-		cliBuildRequest.Push.S3.Region == "" &&
-		cliBuildRequest.Push.S3.Bucket == "" &&
-		cliBuildRequest.Push.S3.KeyPrefix == "" {
+	if cliBuildRequest.Push.Registry.Repo == "" {
 		clierr("you must specify either a Docker registry or S3 region/bucket/key-prefix as a push target")
 	}
 	if cliBuildRequest.Build.GithubRepo == "" {

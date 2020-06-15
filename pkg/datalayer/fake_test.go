@@ -8,7 +8,7 @@ import (
 )
 
 func TestFakeDBSuite(t *testing.T) {
-	testsuite.RunTests(t, func() datalayer.DataLayer {
+	testsuite.RunTests(t, func(t *testing.T) datalayer.DataLayer {
 		return &datalayer.FakeDataLayer{}
 	})
 }

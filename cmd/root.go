@@ -17,7 +17,6 @@ var cliBuildRequest = furanrpc.BuildRequest{
 	Build: &furanrpc.BuildDefinition{},
 	Push: &furanrpc.PushDefinition{
 		Registry: &furanrpc.PushRegistryDefinition{},
-		S3:       &furanrpc.PushS3Definition{},
 	},
 }
 var tags string

@@ -1,91 +1,72 @@
 package datalayer_test
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"testing"
-	"time"
 
-	"github.com/dollarshaveclub/go-lib/cassandra"
-	"github.com/gocql/gocql"
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 
-	"github.com/dollarshaveclub/furan/pkg/config"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/datalayer/testsuite"
-	"github.com/dollarshaveclub/furan/pkg/db"
 )
 
-const (
-	testKeyspace = "furan_test"
-)
+var tdb = os.Getenv("FURAN_TEST_DB")
 
-var sname = "test"
+type migrationLogger struct {
+	LF func(msg string, args ...interface{})
+}
 
-var tn = os.Getenv("SCYLLA_TEST_NODE")
-var ts *gocql.Session
-var dbConfig config.DBconfig
-
-var testDBTimeout = 5 * time.Minute
-
-func setupTestDB() {
-	// create keyspace
-	c := gocql.NewCluster(tn)
-	c.ProtoVersion = 3
-	c.NumConns = 20
-	c.SocketKeepalive = testDBTimeout
-	c.Timeout = testDBTimeout
-	c.MaxWaitSchemaAgreement = testDBTimeout
-	log.Printf("creating keyspace session...\n")
-	s, err := c.CreateSession()
-	if err != nil {
-		log.Fatalf("error creating keyspace session: %v", err)
-	}
-	defer s.Close()
-	log.Printf("creating keyspace...\n")
-	err = s.Query(fmt.Sprintf("CREATE KEYSPACE IF NOT EXISTS %v WITH REPLICATION = {'class': 'SimpleStrategy', 'replication_factor': 1};", testKeyspace)).Exec()
-	if err != nil {
-		log.Fatalf("error creating keyspace: %v", err)
-	}
-	time.Sleep(1)
-
-	// DB setup
-	c.Keyspace = testKeyspace
-	dbConfig.Cluster = c
-	dbConfig.Nodes = []string{tn}
-	dbConfig.Keyspace = testKeyspace
-	log.Printf("creating types...\n")
-	err = cassandra.CreateRequiredTypes(dbConfig.Cluster, db.RequiredUDTs)
-	if err != nil {
-		log.Fatalf("error creating UDTs: %v", err)
-	}
-	log.Printf("creating tables...\n")
-	err = cassandra.CreateRequiredTables(dbConfig.Cluster, db.RequiredTables)
-	if err != nil {
-		log.Fatalf("error creating tables: %v", err)
-	}
-	ts, err = dbConfig.Cluster.CreateSession()
-	if err != nil {
-		log.Fatalf("error getting session: %v", err)
+func (ml *migrationLogger) Printf(format string, v ...interface{}) {
+	if ml.LF != nil {
+		ml.LF(format, v...)
 	}
 }
 
-func teardownTestDB() {
-	q := fmt.Sprintf("DROP KEYSPACE %v;", testKeyspace)
-	err := ts.Query(q).Exec()
+func (ml *migrationLogger) Verbose() bool {
+	return false
+}
+
+func migrator(t *testing.T) *migrate.Migrate {
+	src := "file://../../migrations/"
+	m, err := migrate.New(
+		src,
+		tdb)
 	if err != nil {
-		log.Fatalf("error dropping keyspace: %v", err)
+		t.Fatalf("error creating migrations client: %v", err)
+	}
+	m.Log = &migrationLogger{LF: log.Printf}
+	return m
+}
+
+func setupTestDB(t *testing.T) {
+	m := migrator(t)
+	if err := m.Up(); err != nil {
+		t.Fatalf("error running up migrations: %v", err)
 	}
 }
 
-func TestScyllaDBSuite(t *testing.T) {
-	if tn == "" {
+func teardownTestDB(t *testing.T) {
+	m := migrator(t)
+	if err := m.Down(); err != nil {
+		t.Fatalf("error running down migrations: %v", err)
+	}
+}
+
+func TestPostgresDBSuite(t *testing.T) {
+	if tdb == "" {
 		t.SkipNow()
 	} else {
-		setupTestDB()
-		defer teardownTestDB()
+		setupTestDB(t)
+		defer teardownTestDB(t)
 	}
-	testsuite.RunTests(t, func() datalayer.DataLayer {
-		return datalayer.NewDBLayer(ts, sname)
+	testsuite.RunTests(t, func(t *testing.T) datalayer.DataLayer {
+		dl, err := datalayer.NewPostgresDBLayer(tdb)
+		if err != nil {
+			t.Skipf("error getting postgres datalayer: %v", err)
+		}
+		return dl
 	})
 }

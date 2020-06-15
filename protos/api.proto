@@ -9,6 +9,11 @@ service FuranExecutor {
   rpc CancelBuild (BuildCancelRequest) returns (BuildCancelResponse) {}
 }
 
+message Timestamp {
+  int64 seconds = 1;
+  int32 nanos = 2;
+}
+
 message BuildDefinition {
   string github_repo = 1;
   string dockerfile_path = 2;
@@ -22,15 +27,8 @@ message PushRegistryDefinition {
   string repo = 1;
 }
 
-message PushS3Definition {
-  string region = 1;
-  string bucket = 2;
-  string key_prefix = 3;
-}
-
 message PushDefinition {
   PushRegistryDefinition registry = 1;
-  PushS3Definition s3 = 2;
 }
 
 // Requests
@@ -75,9 +73,11 @@ message BuildStatusResponse {
   bool finished = 4;
   bool failed = 5;
   bool cancelled = 6;
-  string started = 7;
-  string completed = 8;
+  string started = 7; // deprecated
+  string completed = 8; // deprecated
   double duration = 9;
+  Timestamp startedts = 10;
+  Timestamp completedts = 11;
 }
 
 // Messages server-streamed and/or published to Kafka

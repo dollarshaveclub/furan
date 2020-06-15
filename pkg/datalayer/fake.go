@@ -6,18 +6,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
-	"github.com/gocql/gocql"
+	"github.com/gofrs/uuid"
+
+	"github.com/dollarshaveclub/furan/pkg/models"
 )
 
-type eventStreams struct {
-	BuildEvents, PushEvents []furanrpc.BuildEvent
-}
-
 type FakeDataLayer struct {
-	mtx sync.RWMutex
-	d   map[gocql.UUID]*furanrpc.BuildStatusResponse
-	bo  map[gocql.UUID]*eventStreams
+	mtx       sync.RWMutex
+	d         map[uuid.UUID]*models.Build
+	listeners map[uuid.UUID][]chan string
 }
 
 var _ DataLayer = &FakeDataLayer{}
@@ -25,142 +22,121 @@ var _ DataLayer = &FakeDataLayer{}
 func (fdl *FakeDataLayer) init() {
 	if fdl.d == nil {
 		fdl.mtx.Lock()
-		fdl.d = make(map[gocql.UUID]*furanrpc.BuildStatusResponse)
+		fdl.d = make(map[uuid.UUID]*models.Build)
 		fdl.mtx.Unlock()
 	}
-	if fdl.bo == nil {
+	if fdl.listeners == nil {
 		fdl.mtx.Lock()
-		fdl.bo = make(map[gocql.UUID]*eventStreams)
+		fdl.listeners = make(map[uuid.UUID][]chan string)
 		fdl.mtx.Unlock()
 	}
 }
 
-func (fdl *FakeDataLayer) CreateBuild(ctx context.Context, req *furanrpc.BuildRequest) (gocql.UUID, error) {
+func (fdl *FakeDataLayer) CreateBuild(ctx context.Context, b models.Build) (uuid.UUID, error) {
 	fdl.init()
 	fdl.mtx.Lock()
 	defer fdl.mtx.Unlock()
-	id, _ := gocql.RandomUUID()
-	fdl.d[id] = &furanrpc.BuildStatusResponse{
-		BuildId:      id.String(),
-		BuildRequest: req,
-	}
-	return id, nil
+	b.ID = uuid.Must(uuid.NewV4())
+	fdl.d[b.ID] = &b
+	return b.ID, nil
 }
-func (fdl *FakeDataLayer) GetBuildByID(ctx context.Context, id gocql.UUID) (*furanrpc.BuildStatusResponse, error) {
+func (fdl *FakeDataLayer) GetBuildByID(ctx context.Context, id uuid.UUID) (models.Build, error) {
 	fdl.init()
 	fdl.mtx.RLock()
 	defer fdl.mtx.RUnlock()
 	bsr, ok := fdl.d[id]
 	if !ok {
-		return nil, fmt.Errorf("not found")
+		return models.Build{}, fmt.Errorf("not found")
 	}
-	return bsr, nil
+	return *bsr, nil
 }
-func (fdl *FakeDataLayer) SetBuildFlags(ctx context.Context, id gocql.UUID, flags map[string]bool) error {
+
+func (fdl *FakeDataLayer) SetBuildCompletedTimestamp(ctx context.Context, id uuid.UUID, ts time.Time) error {
 	fdl.init()
 	fdl.mtx.Lock()
 	defer fdl.mtx.Unlock()
 	bsr, ok := fdl.d[id]
 	if ok {
-		if finished, ok := flags["finished"]; ok {
-			bsr.Finished = finished
-		}
-		if failed, ok := flags["failed"]; ok {
-			bsr.Failed = failed
-		}
-		if cancelled, ok := flags["cancelled"]; ok {
-			bsr.Cancelled = cancelled
-		}
+		bsr.Completed = ts
 	}
 	return nil
 }
 
-func (fdl *FakeDataLayer) SetBuildCompletedTimestamp(ctx context.Context, id gocql.UUID) error {
+func (fdl *FakeDataLayer) SetBuildStatus(ctx context.Context, id uuid.UUID, s models.BuildStatus) error {
 	fdl.init()
 	fdl.mtx.Lock()
 	defer fdl.mtx.Unlock()
 	bsr, ok := fdl.d[id]
 	if ok {
-		bsr.Completed = time.Now().UTC().String()
+		bsr.Status = s
 	}
 	return nil
 }
 
-func (fdl *FakeDataLayer) SetBuildState(ctx context.Context, id gocql.UUID, state furanrpc.BuildStatusResponse_BuildState) error {
-	fdl.init()
-	fdl.mtx.Lock()
-	defer fdl.mtx.Unlock()
-	bsr, ok := fdl.d[id]
-	if ok {
-		bsr.State = state
-	}
-	return nil
-}
-
-func (fdl *FakeDataLayer) DeleteBuild(ctx context.Context, id gocql.UUID) error {
+func (fdl *FakeDataLayer) DeleteBuild(ctx context.Context, id uuid.UUID) error {
 	fdl.init()
 	fdl.mtx.Lock()
 	defer fdl.mtx.Unlock()
 	delete(fdl.d, id)
 	return nil
 }
-func (fdl *FakeDataLayer) SetBuildTimeMetric(ctx context.Context, id gocql.UUID, metric string) error {
-	fdl.init()
-	switch metric {
-	case "docker_build_started":
-		fallthrough
-	case "docker_build_completed":
-		fallthrough
-	case "push_started":
-		fallthrough
-	case "push_completed":
-		fallthrough
-	case "clean_completed":
-		return nil
-	default:
-		return fmt.Errorf("bad metric name: %v", metric)
-	}
-}
 
-func (fdl *FakeDataLayer) SetDockerImageSizesMetric(context.Context, gocql.UUID, int64, int64) error {
+func (fdl *FakeDataLayer) ListenForBuildEvents(ctx context.Context, id uuid.UUID, c chan<- string) error {
 	fdl.init()
-	return nil
-}
 
-func (fdl *FakeDataLayer) SaveBuildOutput(ctx context.Context, id gocql.UUID, events []furanrpc.BuildEvent, column string) error {
-	fdl.init()
-	fdl.mtx.Lock()
-	defer fdl.mtx.Unlock()
-	es, ok := fdl.bo[id]
+	fdl.mtx.RLock()
+	b, ok := fdl.d[id]
 	if !ok {
-		es = &eventStreams{}
-		fdl.bo[id] = es
+		fdl.mtx.RUnlock()
+		return fmt.Errorf("build not found")
 	}
-	switch column {
-	case "build_output":
-		es.BuildEvents = events
-	case "push_output":
-		es.PushEvents = events
-	default:
-		return fmt.Errorf("bad column")
+	fdl.mtx.RUnlock()
+
+	if !b.CanAddEvent() {
+		return fmt.Errorf("cannot add event to build with status %v", b.Status)
 	}
-	return nil
+
+	lc := make(chan string)
+
+	fdl.mtx.Lock()
+	fdl.listeners[id] = append(fdl.listeners[id], lc)
+	i := len(fdl.listeners[id]) - 1 // index of listener
+	fdl.mtx.Unlock()
+	defer func() {
+		// remove listener chan from listeners
+		fdl.mtx.Lock()
+		if i == 0 {
+			delete(fdl.listeners, id)
+			return
+		}
+		fdl.listeners[id] = append(fdl.listeners[id][:i], fdl.listeners[id][i+1:]...)
+		fdl.mtx.Unlock()
+		close(lc)
+	}()
+
+	for {
+		select {
+		case e := <-lc:
+			c <- e
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled")
+		}
+	}
 }
 
-func (fdl *FakeDataLayer) GetBuildOutput(ctx context.Context, id gocql.UUID, column string) ([]furanrpc.BuildEvent, error) {
+func (fdl *FakeDataLayer) AddEvent(ctx context.Context, id uuid.UUID, event string) error {
 	fdl.init()
+
+	fdl.mtx.Lock()
+	fdl.d[id].Events = append(fdl.d[id].Events, event)
+	fdl.mtx.Unlock()
+
 	fdl.mtx.RLock()
 	defer fdl.mtx.RUnlock()
-	es, ok := fdl.bo[id]
-	if !ok {
-		return nil, fmt.Errorf("not found")
+
+	for _, c := range fdl.listeners[id] {
+		c <- event
 	}
-	switch column {
-	case "build_output":
-		return es.BuildEvents, nil
-	case "push_output":
-		return es.PushEvents, nil
-	default:
-		return nil, fmt.Errorf("bad column")
-	}
+
+	return nil
 }

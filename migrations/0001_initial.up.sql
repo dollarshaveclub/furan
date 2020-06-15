@@ -2,7 +2,7 @@ BEGIN;
 
 CREATE TABLE builds (
   id uuid PRIMARY KEY,
-  created timestamptz NOT NULL,
+  created timestamptz NOT NULL DEFAULT now(),
   updated timestamptz,
   completed timestamptz,
   github_repo text,
@@ -10,9 +10,9 @@ CREATE TABLE builds (
   image_repo text,
   tags text[],
   commit_sha_tag boolean,
-  request jsonb,
+  request jsonb,  -- serialized protobuf BuildRequest
   status integer,
-  events text[]
+  events text[]  -- ordered array of build event strings
 );
 
 CREATE OR REPLACE FUNCTION trigger_set_updated_timestamp()
