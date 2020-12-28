@@ -1,3 +1,5 @@
+// +build linux darwin freebsd netbsd openbsd
+
 package builder
 
 import (
@@ -5,8 +7,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gofrs/uuid"
@@ -120,14 +124,26 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 	opts := b.BuildOptions
 	opts.BuildID = b.ID
 
-	// This marks build handoff to this process
-	// From this point forward, this process is responsible for updating build in the DB
-	if err := m.DL.SetBuildAsRunning(ctx, b.ID); err != nil {
-		return fmt.Errorf("error setting build status to running: %w", err)
-	}
-
 	ctx2, cf := context.WithCancel(ctx)
 	defer cf()
+
+	// handle signals
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		select {
+		case sig := <-sigs:
+			m.DL.AddEvent(context.Background(), b.ID, fmt.Sprintf("signal received: %v; aborting build", sig))
+			cf()
+		case <-ctx2.Done():
+		}
+	}()
+
+	// This marks build handoff to this process
+	// From this point forward, this process is responsible for updating build in the DB
+	if err := m.DL.SetBuildAsRunning(ctx2, b.ID); err != nil {
+		return fmt.Errorf("error setting build status to running: %w", err)
+	}
 
 	cancelled := &atomicBool{}
 	go func() {

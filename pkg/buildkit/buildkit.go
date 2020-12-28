@@ -198,7 +198,7 @@ var (
 
 // verifyAddr ensures that the buildkit socket is connectable, returning an error if timeout is reached and
 // the socket is still unavailable
-func (bks *BuildSolver) verifyAddr() error {
+func (bks *BuildSolver) VerifyAddr() error {
 	deadline := time.Now().UTC().Add(SocketConnectTimeout)
 	for {
 		now := time.Now().UTC()
@@ -286,7 +286,7 @@ func (bks *BuildSolver) Build(ctx context.Context, opts models.BuildOpts) error 
 	}()
 
 	// make sure the buildkit socket is available
-	if err := bks.verifyAddr(); err != nil {
+	if err := bks.VerifyAddr(); err != nil {
 		return fmt.Errorf("error verifying that buildkit is available: %w", err)
 	}
 

@@ -94,6 +94,11 @@ func runbuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("invalid build id: %w", err)
 	}
 
+	// verify that buildkitd is up and running
+	if err := bks.VerifyAddr(); err != nil {
+		return fmt.Errorf("error connecting to buildkitd: %v", err)
+	}
+
 	ctx, cf := context.WithTimeout(context.Background(), runbuildtimeout)
 	defer cf()
 
