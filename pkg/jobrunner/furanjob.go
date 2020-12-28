@@ -81,7 +81,7 @@ var furanjob = batchv1.Job{
 					},
 					corev1.Container{
 						Name:            "buildkitd",
-						Image:           "moby/buildkit:v0.7.2-rootless",
+						Image:           "moby/buildkit:v0.8.1-rootless",
 						ImagePullPolicy: "IfNotPresent",
 						Args: []string{
 							"--oci-worker-no-process-sandbox",

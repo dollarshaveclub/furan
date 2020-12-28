@@ -36,6 +36,17 @@ func (p *Provider) Register(s *grpc.Server) {
 	bkauth.RegisterAuthServer(s, p)
 }
 
+// stub methods to satisfy the AuthServer interface
+func (p *Provider) FetchToken(context.Context, *bkauth.FetchTokenRequest) (*bkauth.FetchTokenResponse, error) {
+	return &bkauth.FetchTokenResponse{}, nil
+}
+func (p *Provider) GetTokenAuthority(context.Context, *bkauth.GetTokenAuthorityRequest) (*bkauth.GetTokenAuthorityResponse, error) {
+	return &bkauth.GetTokenAuthorityResponse{}, nil
+}
+func (p *Provider) VerifyTokenAuthority(context.Context, *bkauth.VerifyTokenAuthorityRequest) (*bkauth.VerifyTokenAuthorityResponse, error) {
+	return &bkauth.VerifyTokenAuthorityResponse{}, nil
+}
+
 func (p *Provider) Credentials(ctx context.Context, req *bkauth.CredentialsRequest) (*bkauth.CredentialsResponse, error) {
 	if req == nil {
 		return nil, status.Errorf(codes.InvalidArgument, "request is nil")
