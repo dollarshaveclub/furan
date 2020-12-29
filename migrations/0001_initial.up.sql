@@ -17,7 +17,7 @@ CREATE TABLE builds (
   events text[]  -- ordered array of build event strings
 );
 
---CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE api_keys (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -2,12 +2,12 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/golang:1.9
+      - image: circleci/golang:1.15
+      - image: circleci/postgres:12-alpine-ram
         environment:
-          SCYLLA_TEST_NODE: scylla:9042
-      - image: scylladb/scylla:1.6.6
-        name: scylla
-        command: --memory 512M --smp 2
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: postgres
 
     working_directory: /go/src/github.com/dollarshaveclub/furan
     steps:
@@ -18,11 +18,21 @@ jobs:
           command: wget https://github.com/jwilder/dockerize/releases/download/$DOCKERIZE_VERSION/dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && sudo tar -C /usr/local/bin -xzvf dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz && rm dockerize-linux-amd64-$DOCKERIZE_VERSION.tar.gz
           environment:
             DOCKERIZE_VERSION: v0.3.0
-
       - run:
           name: Wait for db
-          command: dockerize -wait tcp://scylla:9042 -timeout 1m
+          command: dockerize -wait tcp://localhost:5432 -timeout 1m
 
-      - run: go get -v -t -d ./...
-      - run: go vet $(go list ./... |grep lib/)
-      - run: go test -v $(go list ./... |grep /lib/)
+      - run: go mod vendor
+      - run:
+          name: Run vet
+          command: go vet ./...
+      - run:
+          name: Run tests
+          working_directory: ./pkg
+          environment:
+            FURAN_TEST_DB: postgresql://postgres:root@localhost:5432/postgres?sslmode=disable
+          command: go test -coverprofile=profile.cov ./...
+      - run:
+          name: Test coverage
+          working_directory: ./pkg
+          command: go tool cover -func profile.cov |grep total |awk '{ print $3 }'

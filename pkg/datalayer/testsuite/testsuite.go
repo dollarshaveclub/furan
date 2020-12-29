@@ -326,7 +326,7 @@ func testDBSetBuildCompletedTimestamp(t *testing.T, dl datalayer.DataLayer) {
 	if err != nil {
 		t.Fatalf("error getting build by id: %v", err)
 	}
-	if b.Completed.UTC() != now {
+	if b.Completed.UTC().Truncate(time.Second) != now.Truncate(time.Second) {
 		t.Fatalf("bad completed timestamp: %v (expected %v)", b.Completed.UTC(), now)
 	}
 	err = dl.DeleteBuild(context.Background(), id)
