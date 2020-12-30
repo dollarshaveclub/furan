@@ -420,16 +420,11 @@ func TestServer_MonitorBuild(t *testing.T) {
 				// we don't know exactly how many msgs will be received by the client
 				// it's timing-dependent
 				msgs := []*furanrpc.BuildEvent{}
-				defer func() {
-					t.Logf("clientfunc: %v msgs\n", len(msgs))
-				}()
 				for {
 					msg := &furanrpc.BuildEvent{}
 					if err := msa.RecvMsg(msg); err != nil {
-						t.Logf("clientfunc: error receiving message: %v", err)
 						return
 					}
-					t.Logf("clientfunc: msg: %+v", msg)
 					msgs = append(msgs, msg)
 				}
 			},
