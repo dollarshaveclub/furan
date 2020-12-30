@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
 
 	"github.com/spf13/cobra"
@@ -48,4 +50,5 @@ func init() {
 }
 
 func integration(cmd *cobra.Command, args []string) {
+	fmt.Println("hello world")
 }
