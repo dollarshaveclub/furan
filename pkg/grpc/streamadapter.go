@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"sync"
 
 	"google.golang.org/grpc"
 
@@ -21,19 +22,37 @@ type MonitorStreamAdapter struct {
 	BufferedMsgs uint
 	c            chan *furanrpc.BuildEvent
 	grpc.ServerStream
+	sync.RWMutex
 }
 
 var _ furanrpc.FuranExecutor_MonitorBuildServer = &MonitorStreamAdapter{}
 
 func (msa *MonitorStreamAdapter) init() {
+	msa.RLock()
+	defer msa.RUnlock()
+
 	if msa.c == nil {
+		msa.RUnlock()
+		msa.Lock()
 		msa.c = make(chan *furanrpc.BuildEvent, msa.BufferedMsgs)
+		msa.Unlock()
+		msa.RLock()
 	}
+
 	if msa.Ctx == nil {
+		msa.RUnlock()
+		msa.Lock()
 		msa.Ctx = context.Background()
+		msa.Unlock()
+		msa.RLock()
 	}
+
 	if msa.CancelFunc == nil {
+		msa.RUnlock()
+		msa.Lock()
 		msa.Ctx, msa.CancelFunc = context.WithCancel(msa.Ctx)
+		msa.Unlock()
+		msa.RLock()
 	}
 }
 
@@ -48,7 +67,10 @@ func (msa *MonitorStreamAdapter) checkCtx() bool {
 
 func (msa *MonitorStreamAdapter) Context() context.Context {
 	msa.init()
-	return msa.Ctx
+	msa.RLock()
+	defer msa.RUnlock()
+	ctx := msa.Ctx
+	return ctx
 }
 
 func (msa *MonitorStreamAdapter) Send(e *furanrpc.BuildEvent) error {
@@ -58,6 +80,8 @@ func (msa *MonitorStreamAdapter) Send(e *furanrpc.BuildEvent) error {
 // SendMsg sends m (which must be a *furanrpc.BuildEvent) to listeners
 func (msa *MonitorStreamAdapter) SendMsg(m interface{}) error {
 	msa.init()
+	msa.RLock()
+	defer msa.RUnlock()
 	if !msa.checkCtx() {
 		return fmt.Errorf("stream is closed")
 	}
@@ -79,6 +103,8 @@ func (msa *MonitorStreamAdapter) SendMsg(m interface{}) error {
 // RecvMsg blocks and listens for *furanrpc.BuildEvent messages and if one is received, assigns it to m and returns a nil error
 func (msa *MonitorStreamAdapter) RecvMsg(m interface{}) error {
 	msa.init()
+	msa.RLock()
+	defer msa.RUnlock()
 	if !msa.checkCtx() {
 		return fmt.Errorf("stream is closed")
 	}

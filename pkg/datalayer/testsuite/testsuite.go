@@ -381,16 +381,17 @@ func testDBListenAndAddEvents(t *testing.T, dl datalayer.DataLayer) {
 	ctx, cf := context.WithCancel(context.Background())
 	defer cf()
 	c := make(chan string)
-	defer close(c)
 
 	revents := make(chan string, 3)
 	elisten := make(chan struct{})
 	done := make(chan struct{})
 
 	go func() {
-		close(elisten)
 		// take any events received on c and append to revents
 		for i := 0; i < 3; i++ {
+			if i == 0 {
+				close(elisten)
+			}
 			revents <- <-c
 		}
 		close(done)
@@ -399,6 +400,7 @@ func testDBListenAndAddEvents(t *testing.T, dl datalayer.DataLayer) {
 	listen := make(chan struct{}) // signals that we are listening
 
 	go func() {
+		<-elisten
 		close(listen)
 		// ListenForBuildEvents blocks and will write any received events to c
 		dl.ListenForBuildEvents(ctx, id, c)
@@ -406,6 +408,8 @@ func testDBListenAndAddEvents(t *testing.T, dl datalayer.DataLayer) {
 
 	<-listen // make sure we're listening
 	<-elisten
+
+	time.Sleep(100*time.Millisecond) // we need this (unfortunately) to make the fake test reliable
 
 	// add some events
 	if err := dl.AddEvent(ctx, id, "something happened - 'embedded quoted string'"); err != nil {
@@ -418,7 +422,7 @@ func testDBListenAndAddEvents(t *testing.T, dl datalayer.DataLayer) {
 		t.Fatalf("error adding event 3: %v", err)
 	}
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	select {

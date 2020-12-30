@@ -35,7 +35,7 @@ jobs:
           working_directory: ./pkg
           environment:
             FURAN_TEST_DB: postgresql://postgres:root@localhost:5432/postgres?sslmode=disable
-          command: go test -coverprofile=profile.cov ./...
+          command: go test -race -coverprofile=profile.cov ./...
       - run:
           name: Test coverage
           working_directory: ./pkg
@@ -97,20 +97,21 @@ jobs:
       - run:
           name: wait for job completion
           command: |
+            jobname="furan2-integration"
             until [[ $SECONDS -gt 600 ]] || \
-            [[ $(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] || \
-            [[ $(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; \
+            [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] || \
+            [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; \
             do
               echo "waiting for job completion..."
             done
-            success=$(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}');
+            success=$(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}');
             if [[ "${success}" == "True" ]]; then
               echo "job success"
               exit 0
             else
               echo "job failed or timeout"
-              kubectl describe job/furan2-integration
-              kubectl logs job/furan2-integration
+              kubectl describe job/${jobname}
+              kubectl logs job/${jobname}
               exit 1
             fi
 workflows:

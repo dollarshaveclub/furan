@@ -207,11 +207,12 @@ func (fdl *FakeDataLayer) ListenForBuildEvents(ctx context.Context, id uuid.UUID
 		fdl.mtx.RUnlock()
 		return fmt.Errorf("build not found")
 	}
-	fdl.mtx.RUnlock()
 
 	if !b.CanAddEvent() {
+		fdl.mtx.RUnlock()
 		return fmt.Errorf("cannot add event to build with status %v", b.Status)
 	}
+	fdl.mtx.RUnlock()
 
 	lc := make(chan string)
 

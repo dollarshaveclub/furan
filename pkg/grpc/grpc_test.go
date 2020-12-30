@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -178,70 +179,80 @@ func TestServer_StartBuild(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		var berr error
+		if tt.builderr != nil {
+			berr = errors.New(tt.builderr.Error())
+		}
+		rdelay := tt.rundelay
+		bld := *tt.args.req.Build
+		fopts := tt.fields.Opts
+		werr := tt.wantErr
+		gshaerr := tt.getshaerr
+		breq := *tt.args.req
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			dl := &datalayer.FakeDataLayer{}
 			bm := &builder.FakeBuildManager{
 				StartFunc: func(ctx context.Context, opts models.BuildOpts) error {
 					df := "."
-					if tt.args.req.Build.DockerfilePath != "" {
-						df = tt.args.req.Build.DockerfilePath
+					if bld.DockerfilePath != "" {
+						df = bld.DockerfilePath
 					}
 					if opts.RelativeDockerfilePath != df {
 						t.Errorf("Start: bad dockerfile path: %v (wanted %v)", opts.RelativeDockerfilePath, df)
 					}
-					if tt.args.req.Build.CacheOptions.Type == furanrpc.BuildCacheOpts_UNKNOWN {
+					if bld.CacheOptions.Type == furanrpc.BuildCacheOpts_UNKNOWN {
 						if !cmp.Equal(DefaultCacheOpts, opts.Cache) {
 							t.Errorf("Start: bad cache opts: %#v (wanted %#v)", opts.Cache, DefaultCacheOpts)
 						}
 					}
-					if !cmp.Equal(tt.args.req.Build.Args, opts.BuildArgs) {
-						t.Errorf("Start: bad build args: %v (wanted %v)", opts.BuildArgs, tt.args.req.Build.Args)
+					if !cmp.Equal(bld.Args, opts.BuildArgs) {
+						t.Errorf("Start: bad build args: %v (wanted %v)", opts.BuildArgs, bld.Args)
 					}
-					if tt.builderr == nil {
+					if berr == nil {
 						go func() {
-							time.Sleep(tt.rundelay) // give time for listener
+							time.Sleep(rdelay) // give time for listener
 							if err := dl.SetBuildAsRunning(ctx, opts.BuildID); err != nil {
 								t.Errorf("error setting build as running: %v", err)
 							}
 						}()
 					}
-					time.Sleep(tt.rundelay) // give time for listener
-					return tt.builderr
+					time.Sleep(rdelay) // give time for listener
+					return berr
 				}}
 			key := make([]byte, 32)
 			rand.Read(key)
-			copy(tt.fields.Opts.CredentialDecryptionKey[:], key)
-			tt.fields.Opts.LogFunc = t.Logf
+			copy(fopts.CredentialDecryptionKey[:], key)
+			fopts.LogFunc = t.Logf
 			gr := &Server{
 				DL: dl,
 				BM: bm,
 				CFFactory: func(token string) models.CodeFetcher {
-					if token != tt.args.req.Build.GithubCredential {
-						t.Errorf("bad credential: %v (wanted %v)", token, tt.args.req.Build.GithubCredential)
+					if token != bld.GithubCredential {
+						t.Errorf("bad credential: %v (wanted %v)", token, bld.GithubCredential)
 					}
 					return &github.FakeFetcher{
 						GetCommitSHAFunc: func(ctx context.Context, repo string, ref string) (string, error) {
-							if repo != tt.args.req.Build.GithubRepo {
+							if repo != bld.GithubRepo {
 								t.Errorf("get commit sha: bad repo %v", repo)
 							}
-							if ref != tt.args.req.Build.Ref {
+							if ref != bld.Ref {
 								t.Errorf("get commit sha: bad ref %v", ref)
 							}
-							return "asdf", tt.getshaerr
+							return "asdf", gshaerr
 						},
 					}
 				},
-				Opts: tt.fields.Opts,
+				Opts: fopts,
 			}
 			olderrpause := errorEventPause
 			defer func() { errorEventPause = olderrpause }()
 			errorEventPause = 0
-			cred := tt.args.req.Build.GithubCredential // StartBuild will clear out the request credential
-			got, err := gr.StartBuild(ctx, tt.args.req)
+			cred := bld.GithubCredential // StartBuild will clear out the request credential
+			got, err := gr.StartBuild(ctx, &breq)
 			if err != nil {
-				if !tt.wantErr {
-					t.Errorf("StartBuild() error = %v, wantErr %v", err, tt.wantErr)
+				if !werr {
+					t.Errorf("StartBuild() error = %v, wantErr %v", err, werr)
 				}
 				return
 			}
@@ -254,31 +265,31 @@ func TestServer_StartBuild(t *testing.T) {
 			if b.Request.Build.GithubCredential != "" {
 				t.Errorf("expected empty request credential")
 			}
-			tkn, err := b.GetGitHubCredential(tt.fields.Opts.CredentialDecryptionKey)
+			tkn, err := b.GetGitHubCredential(fopts.CredentialDecryptionKey)
 			if err != nil {
 				t.Errorf("error decrypting credential: %v", err)
 			}
 			if tkn != cred {
 				t.Errorf("bad credential: %v (wanted %v)", tkn, cred)
 			}
-			if i := len(b.ImageRepos); i != len(tt.args.req.Push.Registries) {
-				t.Errorf("bad number of image repos: %v (wanted %v)", len(tt.args.req.Push.Registries), i)
+			if i := len(b.ImageRepos); i != len(breq.Push.Registries) {
+				t.Errorf("bad number of image repos: %v (wanted %v)", len(breq.Push.Registries), i)
 			}
-			if !cmp.Equal(b.Tags, tt.args.req.Build.Tags) {
-				t.Errorf("bad tags: %v (wanted %v)", b.Tags, tt.args.req.Build.Tags)
+			if !cmp.Equal(b.Tags, bld.Tags) {
+				t.Errorf("bad tags: %v (wanted %v)", b.Tags, bld.Tags)
 			}
-			if b.CommitSHATag != tt.args.req.Build.TagWithCommitSha {
-				t.Errorf("bad CommitSHATag: %v (wanted %v)", b.CommitSHATag, tt.args.req.Build.TagWithCommitSha)
+			if b.CommitSHATag != bld.TagWithCommitSha {
+				t.Errorf("bad CommitSHATag: %v (wanted %v)", b.CommitSHATag, bld.TagWithCommitSha)
 			}
-			if tt.args.req.Build.CacheOptions.Type != furanrpc.BuildCacheOpts_UNKNOWN {
-				if b.BuildOptions.Cache.Type != tt.args.req.Build.CacheOptions.Type {
-					t.Errorf("bad cache type: %v (wanted %v)", b.BuildOptions.Cache.Type, tt.args.req.Build.CacheOptions.Type)
+			if bld.CacheOptions.Type != furanrpc.BuildCacheOpts_UNKNOWN {
+				if b.BuildOptions.Cache.Type != bld.CacheOptions.Type {
+					t.Errorf("bad cache type: %v (wanted %v)", b.BuildOptions.Cache.Type, bld.CacheOptions.Type)
 				}
 			}
-			ctx, cf := context.WithTimeout(ctx, 4*tt.rundelay)
+			ctx, cf := context.WithTimeout(ctx, 10*rdelay)
 			defer cf()
 
-			if tt.builderr == nil {
+			if berr == nil {
 				if err := dl.ListenForBuildRunning(ctx, id); err != nil {
 					t.Errorf("error listening for build running: %v", err)
 				}
