@@ -94,6 +94,25 @@ jobs:
           helm-version: v3.4.2
           release-name: furan2-integration
 
+      - run:
+          name: wait for job completion
+          command: |
+            until [[ $SECONDS -gt 600 ]] || \
+            [[ $(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] || \
+            [[ $(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; \
+            do
+              echo "waiting for job completion..."
+            done
+            success=$(kubectl get jobs furan2-integration -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}');
+            if [[ "${success}" == "True" ]]; then
+              echo "job success"
+              exit 0
+            else
+              echo "job failed or timeout"
+              kubectl describe job/furan2-integration
+              kubectl logs job/furan2-integration
+              exit 1
+            fi
 workflows:
   version: 2
   build_and_test:
