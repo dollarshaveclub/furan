@@ -26,6 +26,7 @@ require (
 	github.com/davecgh/go-spew v1.1.1
 	github.com/docker/docker v17.12.0-ce-rc1.0.20200730172259-9f28837c1d93+incompatible // indirect
 	github.com/dollarshaveclub/pvc v1.0.0
+	github.com/ghodss/yaml v1.0.0
 	github.com/gofrs/flock v0.8.0 // indirect
 	github.com/gofrs/uuid v3.3.0+incompatible
 	github.com/gogo/googleapis v1.4.0 // indirect

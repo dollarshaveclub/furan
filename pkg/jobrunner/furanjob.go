@@ -171,6 +171,10 @@ func FuranJobFunc(info ImageInfo, build models.Build, bkresources [2]corev1.Reso
 		info.RootArgs,
 		j.Spec.Template.Spec.Containers[0].Args...,
 	)
+	for i := range info.EnvVars {
+		env := info.EnvVars[i]
+		j.Spec.Template.Spec.Containers[0].Env = append(j.Spec.Template.Spec.Containers[0].Env, env)
+	}
 	for _, ips := range info.ImagePullSecrets {
 		j.Spec.Template.Spec.ImagePullSecrets = append(
 			j.Spec.Template.Spec.ImagePullSecrets,

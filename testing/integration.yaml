@@ -1,0 +1,31 @@
+
+tests:
+  - name: "ecr"
+    build:
+      github_repo: dollarshaveclub/furan
+      ref: master
+      tags:
+        - integration_test
+      tag_with_commit_sha: true
+      # k8s resources for this build job
+      resources:
+        cpu_request: "500m"
+        cpu_limit: "4"
+        mem_request: "512M"
+        mem_limit: "2G"
+      # Docker build arguments
+      # args:
+      #   foo: "bar"
+      # Build cache options
+      # cache_options:
+      #   type: 0        # (see protobuf for enum value definitions)
+      #   max_mode: true
+
+    image_repos:
+      - "932427637498.dkr.ecr.us-west-2.amazonaws.com/furan2-integration"
+    skip_if_exists: false
+    expect_failure: false
+    # k8s secrets containing credentials for this build test
+    secret_names:
+      github_token: "github-token"
+

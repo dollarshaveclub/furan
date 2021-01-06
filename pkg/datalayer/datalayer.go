@@ -50,6 +50,11 @@ var _ DataLayer = &PostgresDBLayer{}
 
 // NewPostgresDBLayer returns a data layer object backed by PostgreSQL
 func NewPostgresDBLayer(pguri string) (*PostgresDBLayer, error) {
+	pool, err := NewRawPGClient(pguri)
+	return &PostgresDBLayer{p: pool}, err
+}
+
+func NewRawPGClient(pguri string) (*pgxpool.Pool, error) {
 	dbcfg, err := pgxpool.ParseConfig(pguri)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing pg db uri: %w", err)
@@ -69,7 +74,7 @@ func NewPostgresDBLayer(pguri string) (*PostgresDBLayer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating pg connection pool: %w", err)
 	}
-	return &PostgresDBLayer{p: pool}, nil
+	return pool, nil
 }
 
 // Close closes all database connections in the connection pool

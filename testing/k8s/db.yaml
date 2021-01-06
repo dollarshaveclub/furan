@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: db
+data:
+  uri: '{URIVALUE}'
+  credential_encryption_key: '{CEKVALUE}'

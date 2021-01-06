@@ -30,13 +30,22 @@ spec:
           env:
             - name: VAULT_ADDR
               value: {{ .Values.vault.addr }}
+          {{ if eq .Values.app.secrets_backend "env" }}
+            {{ range .Values.app.env_secret_names }}
+            - name: '{{ .env_var }}'
+              valueFrom:
+                secretKeyRef:
+                  name: '{{ .secret }}'
+                  key: '{{ .data_key }}'
+            {{ end }}
+          {{ end }}
           command:
             - /usr/local/bin/furan
           args:
             - "--secrets-backend"
             - "{{ .Values.app.secrets_backend }}"
             - "--secrets-mapping"
-            - "{{ .Values.app.secrets_mapping }}"
+            - {{ .Values.app.secrets_mapping }}
             {{ if .Values.vault.use_k8s_auth }}
             - "--vault-k8s-auth"
             - "--vault-k8s-role"

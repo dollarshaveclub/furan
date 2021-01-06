@@ -15,6 +15,27 @@ annotations:
 app:
   secrets_backend: "vault"
   secrets_mapping: "secret/{{ .ID }}"
+  # if using the "env" secrets backend, map these k8s secret names
+  # to the corresponding env vars
+  env_secret_names:
+    - env_var: "GITHUB_TOKEN"
+      secret: "github-token"
+      data_key: "token"
+    - env_var: "QUAY_TOKEN"
+      secret: "quay-token"
+      data_key: "token"
+    - env_var: "AWS_ACCESS_KEY_ID"
+      secret: "aws-access-key"
+      data_key: "access_key_id"
+    - env_var: "AWS_SECRET_ACCESS_KEY"
+      secret: "aws-access-key"
+      data_key: "secret_access_key"
+    - env_var: "DB_URI"
+      secret: "db"
+      data_key: "uri"
+    - env_var: "DB_CREDENTIAL_ENCRYPTION_KEY"
+      secret: "db"
+      data_key: "credential_encryption_key"
   tls:
     use_dev_cert: false
     from_secret: ''

@@ -5,3 +5,4 @@ local_dev_secrets.local.json
 build
 releases
 .idea
+testing/k8s/out/*.yaml

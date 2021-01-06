@@ -51,11 +51,11 @@ spec:
             - "--secrets-backend"
             - "{{ .Values.app.secrets_backend }}"
             - "--secrets-mapping"
-            - "{{ .Values.app.secrets_mapping }}"
-            {{ if eq .Values.app.secrets_backend "vault" -}}
+            - {{ .Values.app.secrets_mapping }}
+            {{ if eq .Values.app.secrets_backend "vault" }}
             - "--vault-addr"
             - "{{ .Values.vault.address }}"
-            {{ if .Values.vault.use_token_auth -}}
+            {{ if .Values.vault.use_token_auth }}
             - "--vault-token-auth=true"
             - "--vault-token"
             - "{{ .Values.vault.token }}"
@@ -90,6 +90,15 @@ spec:
             - containerPort: {{ .Values.service.internalPort }}
               protocol: TCP
           env:
+            {{ if eq .Values.app.secrets_backend "env" }}
+              {{ range .Values.app.env_secret_names }}
+            - name: '{{ .env_var }}'
+              valueFrom:
+                secretKeyRef:
+                  name: '{{ .secret }}'
+                  key: '{{ .data_key }}'
+              {{ end }}
+            {{ end }}
             # downward API values required for job runner
             - name: POD_NAMESPACE
               valueFrom:

@@ -83,33 +83,57 @@ jobs:
               sleep 1;
             done
       - run:
-          name: fix RBAC
+          name: set default RBAC
           command: |
             # make default account cluster-admin
-            kubectl create clusterrolebinding add-on-cluster-admin --clusterrole cluster-admin --serviceaccount=kube-system:default
+            kubectl create clusterrolebinding default-cluster-admin --clusterrole cluster-admin --serviceaccount=default:default
 
-      # Install helm chart
+      - run:
+          name: setup secrets
+          working_directory: testing/
+          command: k8s/setup_cci_secrets.sh
+
+      # Install postgres
+      - helm/install-helm-chart:
+          chart: stable/postgresql
+          helm-version: v3.4.2
+          release-name: postgres
+          values-to-override: 'image.tag=12,postgresqlPassword=root,postgresqlDatabase=furan,persistence.enabled=false,fullnameOverride=postgresql'
+          wait: true
+
+      # Install furan server
+      - helm/install-helm-chart:
+          chart: ./.helm/charts/furan2
+          helm-version: v3.4.2
+          release-name: furan2
+          values-to-override: 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,app.secrets_mapping="{{ .ID }}",image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
+          wait: true
+
+      # Install integration test helm chart
       - helm/install-helm-chart:
           chart: ./.helm/charts/furan2-integration
           helm-version: v3.4.2
           release-name: furan2-integration
+          wait: false
 
       - run:
           name: wait for job completion
           command: |
             jobname="furan2-integration"
-            until [[ $SECONDS -gt 600 ]] || \
-            [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] || \
-            [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; \
-            do
+            until [[ $SECONDS -gt 600 ]] ||
+              [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}') == "True" ]] ||
+              [[ $(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}') == "True" ]]; do
               echo "waiting for job completion..."
+              sleep 5
             done
-            success=$(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}');
+            success=$(kubectl get jobs ${jobname} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
             if [[ "${success}" == "True" ]]; then
               echo "job success"
               exit 0
             else
               echo "job failed or timeout"
+              kubectl get pods
+              kubectl describe pods
               kubectl describe job/${jobname}
               kubectl logs job/${jobname}
               exit 1

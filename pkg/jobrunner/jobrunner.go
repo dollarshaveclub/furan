@@ -29,6 +29,7 @@ type ImageInfo struct {
 	ImagePullSecrets                          []string
 	RootArgs                                  []string // All args prior to the "server" command (secrets setup, etc)
 	Resources                                 [2]corev1.ResourceList
+	EnvVars                                   []corev1.EnvVar // any env vars that reference k8s secrets
 }
 
 // JobFactoryFunc is a function that generates a new image build Job given an ImageInfo and an optional set of
@@ -122,6 +123,14 @@ func (kr K8sJobRunner) image() (ImageInfo, error) {
 	}
 	if out.Image == "" {
 		return out, fmt.Errorf("furan container not found in pod")
+	}
+
+	for i := range pod.Spec.Containers[furancidx].Env {
+		ev := pod.Spec.Containers[furancidx].Env[i]
+		// only add env vars that reference k8s secrets
+		if ev.ValueFrom != nil && ev.ValueFrom.SecretKeyRef != nil {
+			out.EnvVars = append(out.EnvVars, ev)
+		}
 	}
 
 	out.ServiceAccount = pod.Spec.ServiceAccountName
