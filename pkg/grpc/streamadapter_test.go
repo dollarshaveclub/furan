@@ -54,9 +54,7 @@ func TestMonitorStreamAdapter_RecvMsg(t *testing.T) {
 			if tt.ctxfunc != nil {
 				ctx = tt.ctxfunc()
 			}
-			msa := &MonitorStreamAdapter{
-				Ctx: ctx,
-			}
+			msa := NewMonitorStreamAdapter(ctx, 0)
 			if tt.m != nil {
 				go msa.SendMsg(tt.m)
 			}
@@ -96,10 +94,7 @@ func TestMonitorStreamAdapter_SendMsg(t *testing.T) {
 	ctx, cf := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cf()
 
-	msa := &MonitorStreamAdapter{
-		Ctx:        ctx,
-		CancelFunc: cf,
-	}
+	msa := NewMonitorStreamAdapter(ctx, 0)
 
 	go func() {
 		for i := range events {

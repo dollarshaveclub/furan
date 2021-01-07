@@ -447,10 +447,7 @@ func TestServer_MonitorBuild(t *testing.T) {
 			ctx, cf := context.WithCancel(context.Background())
 			defer cf()
 			go tt.buildfunc(dl, id)
-			msa := &MonitorStreamAdapter{
-				Ctx:        ctx,
-				CancelFunc: cf,
-			}
+			msa := NewMonitorStreamAdapter(ctx, 0)
 			go tt.clientfunc(msa)
 			req := &furanrpc.BuildStatusRequest{
 				BuildId: id.String(),

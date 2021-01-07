@@ -305,16 +305,18 @@ func (fdl *FakeDataLayer) ListenForCancellation(ctx context.Context, id uuid.UUI
 		fdl.mtx.RUnlock()
 		return fmt.Errorf("build not found")
 	}
-	fdl.mtx.RUnlock()
 
 	switch {
 	case b.Running():
 		break
 	case b.Status == models.BuildStatusCancelRequested || b.Status == models.BuildStatusCancelled:
+		fdl.mtx.RUnlock()
 		return nil
 	default:
+		fdl.mtx.RUnlock()
 		return fmt.Errorf("unexpected status for build (wanted Running or Cancelled): %v", b.Status.String())
 	}
+	fdl.mtx.RUnlock()
 
 	lc := make(chan struct{})
 

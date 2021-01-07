@@ -50,8 +50,10 @@ spec:
             # these will be copied and injected into build job definitions
             - "--secrets-backend"
             - "{{ .Values.app.secrets_backend }}"
+            {{ if .Values.app.secrets_mapping }}
             - "--secrets-mapping"
             - {{ .Values.app.secrets_mapping }}
+            {{ end }}
             {{ if eq .Values.app.secrets_backend "vault" }}
             - "--vault-addr"
             - "{{ .Values.vault.address }}"

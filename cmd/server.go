@@ -88,7 +88,7 @@ func serverAndRunnerFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().StringVar(&secretsbackend, "secrets-backend", "vault", "Secret backend (one of: vault,env,json,filetree)")
 	cmd.PersistentFlags().StringVar(&sf.JSONFile, "secrets-json-file", "secrets.json", "Secret JSON file path (if using json backend)")
 	cmd.PersistentFlags().StringVar(&sf.FileTreeRoot, "secrets-filetree-root", "/vault/secrets/", "Secrets filetree root path (if using filetree backend)")
-	cmd.PersistentFlags().StringVar(&sf.Mapping, "secrets-mapping", "", "Secrets mapping template string (required)")
+	cmd.PersistentFlags().StringVar(&sf.Mapping, "secrets-mapping", "{{.ID}}", "Secrets mapping template string (required)")
 
 	// AWS S3 Cache
 	cmd.PersistentFlags().StringVar(&awsConfig.Region, "aws-region", "us-west-2", "AWS region")

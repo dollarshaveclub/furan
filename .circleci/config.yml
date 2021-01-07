@@ -106,7 +106,7 @@ jobs:
           chart: ./.helm/charts/furan2
           helm-version: v3.4.2
           release-name: furan2
-          values-to-override: 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,app.secrets_mapping="{{ .ID }}",image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
+          values-to-override: 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
           wait: true
 
       # Install integration test helm chart

@@ -14,7 +14,7 @@ annotations:
 
 app:
   secrets_backend: "vault"
-  secrets_mapping: "secret/{{ .ID }}"
+  secrets_mapping: ""
   # if using the "env" secrets backend, map these k8s secret names
   # to the corresponding env vars
   env_secret_names:

@@ -31,7 +31,7 @@ fi
 # furan server
 if ! helm list | grep -q furan2; then
   echo "installing furan server"
-  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,app.secrets_mapping="{{ .ID }}",image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
+  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
 fi
 
 # integration tests
