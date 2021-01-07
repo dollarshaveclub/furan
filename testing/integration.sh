@@ -25,13 +25,13 @@ fi
 # database
 if ! helm list | grep -q postgres; then
   echo "installing postgres"
-  helm install postgres stable/postgresql --set 'image.tag=12,postgresqlPassword=root,postgresqlDatabase=furan,persistence.enabled=false,fullnameOverride=postgresql'
+  helm install postgres stable/postgresql --set 'image.tag=12,postgresqlPassword=root,postgresqlDatabase=furan,persistence.enabled=false,fullnameOverride=postgresql' || exit 1
 fi
 
 # furan server
 if ! helm list | grep -q furan2; then
   echo "installing furan server"
-  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
+  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default' || exit 1
 fi
 
 # integration tests
@@ -39,7 +39,7 @@ if helm list | grep -q furan2-integration; then
   helm delete furan2-integration
 fi
 
-helm install furan2-integration .helm/charts/furan2-integration --wait=false
+helm install furan2-integration .helm/charts/furan2-integration --wait=false || exit 1
 
 jobname="furan2-integration"
 until [[ $SECONDS -gt 600 ]] ||

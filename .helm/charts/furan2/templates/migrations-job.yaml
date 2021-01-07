@@ -44,8 +44,10 @@ spec:
           args:
             - "--secrets-backend"
             - "{{ .Values.app.secrets_backend }}"
+            {{ if .Values.app.secrets_mapping }}
             - "--secrets-mapping"
-            - {{ .Values.app.secrets_mapping }}
+            - "{{ .Values.app.secrets_mapping }}"
+            {{ end }}
             {{ if .Values.vault.use_k8s_auth }}
             - "--vault-k8s-auth"
             - "--vault-k8s-role"
