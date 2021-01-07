@@ -91,7 +91,7 @@ jobs:
       - run:
           name: setup secrets
           working_directory: testing/k8s
-          command: setup_cci_secrets.sh
+          command: ./setup_cci_secrets.sh
 
       # Install postgres
       - helm/install-helm-chart:
