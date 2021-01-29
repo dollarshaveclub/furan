@@ -88,6 +88,10 @@ spec:
             - "--tls-key-file"
             - "/opt/tlscert/tls.key"
             {{ end }}
+            {{ if .Values.app.builder_image }}
+            - "--builder-image"
+            - "{{ .Values.app.builder_image }}"
+            {{ end }}
           ports:
             - containerPort: {{ .Values.service.internalPort }}
               protocol: TCP
@@ -110,6 +114,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+            {{ if .Values.app.verbose }}
+            - name: GRPC_GO_LOG_VERBOSITY_LEVEL
+              value: '99'
+            - name: GRPC_GO_LOG_SEVERITY_LEVEL
+              value: 'info'
+            {{ end }}
           volumeMounts:
             {{ if or .Values.app.tls.use_dev_cert .Values.app.tls.from_secret }}
             - name: tlscert

@@ -50,10 +50,16 @@ jobs:
     steps:
       - checkout
 
-      # Build docker image (do this first so if it fails we don't bother w/ anything else)
+      # Build docker images (do this first so if it fails we don't bother w/ anything else)
       - run:
           name: build docker image
           command: docker build -t furan2:integration .
+          environment:
+            DOCKER_BUILDKIT: 1
+      - run:
+          name: build docker image
+          command: docker build -t furan2-builder:integration .
+          working_directory: builder
           environment:
             DOCKER_BUILDKIT: 1
 
@@ -106,7 +112,7 @@ jobs:
           chart: ./.helm/charts/furan2
           helm-version: v3.4.2
           release-name: furan2
-          values-to-override: 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default'
+          values-to-override: 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default,app.builder_image=furan2-builder:integration'
           wait: true
 
       # Install integration test helm chart

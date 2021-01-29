@@ -13,6 +13,8 @@ run_migrations: false
 annotations:
 
 app:
+  verbose: false
+  builder_image: ''
   secrets_backend: "vault"
   secrets_mapping: ""
   # if using the "env" secrets backend, map these k8s secret names

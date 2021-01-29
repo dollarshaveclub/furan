@@ -43,6 +43,7 @@ var defaultcachetype, tracesvcname string
 var defaultcachemaxmode bool
 var tlscert, tlskey string
 var jcinterval, jcage time.Duration
+var builderimg string
 
 type maxResourceLimits struct {
 	CPUReq, MemReq, CPULim, MemLim string
@@ -106,6 +107,9 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&serverConfig.GRPCAddr, "grpc-addr", "0.0.0.0:4000", "gRPC listen address")
 	serverCmd.PersistentFlags().StringVar(&tracesvcname, "trace-svc", "furan2", "APM trace service name (optional)")
 
+	// Builder image
+	serverCmd.PersistentFlags().StringVar(&builderimg, "builder-image", "", "Buildkit builder container image override (optional)")
+
 	// Job cleanup
 	serverCmd.PersistentFlags().DurationVar(&jcinterval, "job-cleanup-interval", 30*time.Minute, "Build job cleanup check interval")
 	serverCmd.PersistentFlags().DurationVar(&jcage, "job-cleanup-min-age", 48*time.Hour, "Minimum age for build jobs to be eligible for cleanup (deletion)")
@@ -151,6 +155,10 @@ func server(cmd *cobra.Command, args []string) {
 	}
 
 	ctx := context.Background()
+
+	if builderimg != "" {
+		jobrunner.BuildKitImage = builderimg
+	}
 
 	jr, err := jobrunner.NewInClusterRunner(dl)
 	if err != nil {
