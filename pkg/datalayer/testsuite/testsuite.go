@@ -409,7 +409,7 @@ func testDBListenAndAddEvents(t *testing.T, dl datalayer.DataLayer) {
 	<-listen // make sure we're listening
 	<-elisten
 
-	time.Sleep(100*time.Millisecond) // we need this (unfortunately) to make the fake test reliable
+	time.Sleep(100 * time.Millisecond) // we need this (unfortunately) to make the fake test reliable
 
 	// add some events
 	if err := dl.AddEvent(ctx, id, "something happened - 'embedded quoted string'"); err != nil {
@@ -480,6 +480,8 @@ func testDBCancelBuildAndListenForCancellation(t *testing.T, dl datalayer.DataLa
 
 	<-listen // block until we're listening
 
+	time.Sleep(100 * time.Millisecond) // we need this (unfortunately) to make the fake test reliable
+
 	// build shouldn't be cancelled yet
 	select {
 	case <-c:
@@ -489,7 +491,9 @@ func testDBCancelBuildAndListenForCancellation(t *testing.T, dl datalayer.DataLa
 
 	close(cxl) // allow cancellation request to be sent
 
-	ticker := time.NewTicker(500 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // we need this (unfortunately) to make the fake test reliable
+
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
 	<-cancelled
