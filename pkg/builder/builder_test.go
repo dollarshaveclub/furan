@@ -326,6 +326,7 @@ func TestManager_Run(t *testing.T) {
 				ImageRepos: tt.imagerepos,
 				Request: furanrpc.BuildRequest{
 					SkipIfExists: true,
+					Build:        &furanrpc.BuildDefinition{},
 				},
 			}
 
