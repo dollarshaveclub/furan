@@ -17,6 +17,7 @@ import (
 
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/models"
+	"github.com/mitchellh/go-ps"
 )
 
 // Manager is an object that performs high-level management of image builds
@@ -112,6 +113,14 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 	if m.BRunner == nil || m.TCheck == nil || m.FetcherFactory == nil || m.DL == nil {
 		return fmt.Errorf("missing dependencies: %#v", m)
 	}
+
+	// ensure that the buildkit sidecar container exits so the job completes
+	defer func() {
+		if err2 := m.killbuildkitd(); err2 != nil {
+			m.DL.AddEvent(context.Background(), buildID, err2.Error())
+		}
+	}()
+
 	b, err := m.DL.GetBuildByID(ctx, buildID)
 	if err != nil {
 		return fmt.Errorf("error getting build: %w", err)
@@ -185,7 +194,10 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 
 	if b.Request.SkipIfExists {
 		allexist := true
-		tags := append(b.Tags, opts.CommitSHA)
+		tags := b.Tags
+		if b.Request.Build.TagWithCommitSha {
+			tags = append(tags, opts.CommitSHA)
+		}
 		for _, irepo := range b.ImageRepos {
 			exists, _, err := m.TCheck.AllTagsExist(tags, irepo)
 			if err != nil {
@@ -232,4 +244,24 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 		return fmt.Errorf("error setting build as completed: %w", err)
 	}
 	return nil
+}
+
+// Send SIGTERM to the buildkitd sidecar container
+// This requires shareProcessNamespace=true on the build job
+func (m *Manager) killbuildkitd() error {
+	psl, err := ps.Processes()
+	if err != nil {
+		return fmt.Errorf("error listing processes: %w", err)
+	}
+	for _, p := range psl {
+		// if not using rootless buildkit, change this to "buildkitd"
+		if p.Executable() == "rootlesskit" {
+			err = syscall.Kill(p.Pid(), syscall.SIGTERM)
+			if err != nil {
+				return fmt.Errorf("error sending SIGTERM to buildkitd: %w", err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("buildkitd process not found")
 }
