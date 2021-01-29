@@ -304,6 +304,9 @@ github.com/lib/pq/scram
 github.com/mholt/archiver/v3
 # github.com/mitchellh/go-homedir v1.1.0
 github.com/mitchellh/go-homedir
+# github.com/mitchellh/go-ps v1.0.0
+## explicit
+github.com/mitchellh/go-ps
 # github.com/mitchellh/mapstructure v1.3.3
 github.com/mitchellh/mapstructure
 # github.com/moby/buildkit v0.7.2
