@@ -19,6 +19,7 @@ var (
 	jobCompletions           = int32(1)
 	jobBackoffLimit          = int32(3)
 	jobActiveDeadlineSeconds = int64(60 * 60) // 1 hour
+	shareProcessNamespace    = true
 )
 
 const (
@@ -52,7 +53,8 @@ var furanjob = batchv1.Job{
 				},
 			},
 			Spec: corev1.PodSpec{
-				RestartPolicy: corev1.RestartPolicyOnFailure,
+				ShareProcessNamespace: &shareProcessNamespace,
+				RestartPolicy:         corev1.RestartPolicyNever,
 				Containers: []corev1.Container{
 					corev1.Container{
 						Name:            "furan",
@@ -81,7 +83,7 @@ var furanjob = batchv1.Job{
 					},
 					corev1.Container{
 						Name:            "buildkitd",
-						Image:           "moby/buildkit:v0.7.2-rootless",
+						Image:           BuildKitImage,
 						ImagePullPolicy: "IfNotPresent",
 						Args: []string{
 							"--oci-worker-no-process-sandbox",
@@ -132,6 +134,8 @@ func truncateName(s string, n uint) string {
 
 // JobLabel is a label added to every build job to aid search/aggregation
 var JobLabel = "created-by:furan2"
+
+var BuildKitImage = "moby/buildkit:v0.7.2-rootless"
 
 // FuranJobFunc is a JobFactoryFunc that generates a Kubernetes Job to execute a build
 func FuranJobFunc(info ImageInfo, build models.Build, bkresources [2]corev1.ResourceList) *batchv1.Job {
@@ -188,6 +192,7 @@ func FuranJobFunc(info ImageInfo, build models.Build, bkresources [2]corev1.Reso
 	if bkresources[1] != nil {
 		j.Spec.Template.Spec.Containers[1].Resources.Limits = bkresources[1]
 	}
+	j.Spec.Template.Spec.Containers[1].Image = BuildKitImage
 	return &j
 }
 
