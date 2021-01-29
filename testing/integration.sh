@@ -9,6 +9,12 @@ if [[ ! -d "./.git" ]]; then
   exit 1
 fi
 
+# make sure kube context is minikube
+if [[ "$(kubectl config current-context)" != "minikube" ]]; then
+  echo "kubectl context must be minikube (edit script if you're sure you know what you're doing)"
+  exit 1
+fi
+
 if ! kubectl get clusterrolebinding default-cluster-admin >/dev/null 2>&1; then
   echo "setting up rbac"
   kubectl create clusterrolebinding default-cluster-admin --clusterrole cluster-admin --serviceaccount=default:default
@@ -31,7 +37,7 @@ fi
 # furan server
 if ! helm list | grep -q furan2; then
   echo "installing furan server"
-  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default' || exit 1
+  helm install furan2 .helm/charts/furan2 --set 'run_migrations=true,app.verbose=true,app.tls.use_dev_cert=true,app.secrets_backend=env,image.repository=furan2,image.tag=integration,is_dqa=true,serviceAccountName=default,app.builder_image=furan2-builder:integration' || exit 1
 fi
 
 # integration tests

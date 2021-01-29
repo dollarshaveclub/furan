@@ -423,6 +423,11 @@ func (gr *Server) MonitorBuild(req *furanrpc.BuildStatusRequest, stream furanrpc
 
 	// if build is completed, close the stream
 	if b.Status.TerminalState() {
+		stream.Send(&furanrpc.BuildEvent{
+			BuildId:      b.ID.String(),
+			Message:      fmt.Sprintf("build has ended: %v", b.Status),
+			CurrentState: b.Status.State(),
+		})
 		return nil
 	}
 
