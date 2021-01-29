@@ -43,23 +43,36 @@ type DataLayer interface {
 
 // PostgresDBLayer is a DataLayer instance that utilizes a PostgreSQL database
 type PostgresDBLayer struct {
-	p *pgxpool.Pool
+	p  *pgxpool.Pool // pool for normal queries
+	lp *pgxpool.Pool // pool for long-lived LISTEN queries
 }
 
 var _ DataLayer = &PostgresDBLayer{}
 
+var (
+	MinPoolConns       uint32 = 5
+	MinListenPoolConns uint32 = 20
+)
+
 // NewPostgresDBLayer returns a data layer object backed by PostgreSQL
 func NewPostgresDBLayer(pguri string) (*PostgresDBLayer, error) {
-	pool, err := NewRawPGClient(pguri)
-	return &PostgresDBLayer{p: pool}, err
+	pool, err := NewRawPGClient(pguri, MinPoolConns)
+	if err != nil {
+		return nil, fmt.Errorf("error getting conn pool: %w", err)
+	}
+	lpool, err := NewRawPGClient(pguri, MinListenPoolConns)
+	if err != nil {
+		return nil, fmt.Errorf("error getting listen conn pool: %w", err)
+	}
+	return &PostgresDBLayer{p: pool, lp: lpool}, err
 }
 
-func NewRawPGClient(pguri string) (*pgxpool.Pool, error) {
+func NewRawPGClient(pguri string, minconns uint32) (*pgxpool.Pool, error) {
 	dbcfg, err := pgxpool.ParseConfig(pguri)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing pg db uri: %w", err)
 	}
-	dbcfg.MinConns = 2
+	dbcfg.MinConns = int32(minconns)
 	dbcfg.HealthCheckPeriod = 5 * time.Second
 	dbcfg.MaxConnIdleTime = 10 * time.Second
 	dbcfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
@@ -80,6 +93,7 @@ func NewRawPGClient(pguri string) (*pgxpool.Pool, error) {
 // Close closes all database connections in the connection pool
 func (dl *PostgresDBLayer) Close() {
 	dl.p.Close()
+	dl.lp.Close()
 }
 
 var retries = 5
@@ -282,7 +296,7 @@ func (dl *PostgresDBLayer) ListenForBuildEvents(ctx context.Context, id uuid.UUI
 	if !b.EventListenable() {
 		return fmt.Errorf("build status %v; no events are possible", b.Status.String())
 	}
-	conn, err := dl.p.Acquire(ctx)
+	conn, err := dl.lp.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting db connection: %w", err)
 	}
@@ -382,7 +396,7 @@ func (dl *PostgresDBLayer) ListenForCancellation(ctx context.Context, id uuid.UU
 	default:
 		return fmt.Errorf("unexpected status for build (wanted Running or Cancelled): %v", b.Status.String())
 	}
-	conn, err := dl.p.Acquire(ctx)
+	conn, err := dl.lp.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting db connection: %w", err)
 	}
@@ -438,7 +452,7 @@ func (dl *PostgresDBLayer) ListenForBuildRunning(ctx context.Context, id uuid.UU
 	default:
 		return fmt.Errorf("unexpected build status (wanted Running or NotStarted): %v", b.Status.String())
 	}
-	conn, err := dl.p.Acquire(ctx)
+	conn, err := dl.lp.Acquire(ctx)
 	if err != nil {
 		return fmt.Errorf("error getting db connection: %w", err)
 	}
@@ -501,7 +515,7 @@ func (dl *PostgresDBLayer) ListenForBuildCompleted(ctx context.Context, id uuid.
 		return b.Status, fmt.Errorf("unknown or invalid build status: %v", b.Status)
 	}
 
-	conn, err := dl.p.Acquire(ctx)
+	conn, err := dl.lp.Acquire(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("error getting db connection: %w", err)
 	}

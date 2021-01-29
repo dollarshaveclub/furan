@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/ghodss/yaml"
@@ -51,6 +52,7 @@ type IntegrationTest struct {
 	ImageRepos    []string                 `json:"image_repos"`
 	SkipIfExists  bool                     `json:"skip_if_exists"`
 	ExpectFailure bool                     `json:"expect_failure"`
+	ExpectSkipped bool                     `json:"expect_skipped"`
 	SecretNames   K8sSecretNames           `json:"secret_names"`
 }
 
@@ -63,6 +65,11 @@ func init() {
 	integrationCmd.Flags().StringVar(&furanaddr, "furan-addr", "furan:4000", "furan server address")
 	integrationCmd.Flags().DurationVar(&furanServerConnectTimeout, "furan-timeout", 2*time.Minute, "timeout for furan server to be up and ready")
 	RootCmd.AddCommand(integrationCmd)
+}
+
+type buildMap struct {
+	sync.RWMutex
+	builds map[string]uuid.UUID
 }
 
 func integration(cmd *cobra.Command, args []string) error {
@@ -129,6 +136,9 @@ func integration(cmd *cobra.Command, args []string) error {
 
 	var eg errgroup.Group
 
+	var bm buildMap
+	bm.builds = make(map[string]uuid.UUID, len(tests.Tests))
+
 	for i := range tests.Tests {
 		t := tests.Tests[i]
 		p := &furanrpc.PushDefinition{
@@ -139,17 +149,24 @@ func integration(cmd *cobra.Command, args []string) error {
 				Repo: t.ImageRepos[i],
 			}
 		}
-		req := furanrpc.BuildRequest{
-			Build:        &t.Build,
-			Push:         p,
-			SkipIfExists: t.SkipIfExists,
-		}
-		bid, err := fc.StartBuild(ctx, req)
-		if err != nil {
-			return fmt.Errorf("error starting build: %v: %w", t.Name, err)
-		}
+		n := i
 		eg.Go(func() error {
-			return monitorIntegrationBuild(ctx, bid, t.ExpectFailure, fc)
+			fmt.Printf("starting build: %v: %v\n", n, t.Name)
+			bid, err := fc.StartBuild(ctx, furanrpc.BuildRequest{
+				Build:        &t.Build,
+				Push:         p,
+				SkipIfExists: t.SkipIfExists,
+			})
+			if err != nil {
+				return fmt.Errorf("error starting build: %v: %w", t.Name, err)
+			}
+
+			bm.Lock()
+			bm.builds[t.Name] = bid
+			bm.Unlock()
+
+			fmt.Printf("build started: %v: %v: %v\n", n, t.Name, bid)
+			return monitorIntegrationBuild(ctx, bid, t.ExpectFailure, t.ExpectSkipped, fc)
 		})
 	}
 
@@ -157,10 +174,21 @@ func integration(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failure: %w", err)
 	}
 
+	bm.Lock()
+	defer bm.Unlock()
+	for name, id := range bm.builds {
+		bs, err := fc.GetBuildStatus(ctx, id)
+		if err != nil {
+			fmt.Printf("error getting build status: %v: %v: %v", id, name, err)
+			continue
+		}
+		fmt.Printf("build status: %v: %v: %v\n", id, name, bs.State)
+	}
+
 	return nil
 }
 
-func monitorIntegrationBuild(ctx context.Context, bid uuid.UUID, fail bool, fc *client.RemoteBuilder) error {
+func monitorIntegrationBuild(ctx context.Context, bid uuid.UUID, fail, skip bool, fc *client.RemoteBuilder) error {
 	s, err := fc.MonitorBuild(ctx, bid)
 	if err != nil {
 		return fmt.Errorf("error monitoring build %v: %w", bid, err)
@@ -198,6 +226,10 @@ func monitorIntegrationBuild(ctx context.Context, bid uuid.UUID, fail bool, fc *
 		if fail {
 			return fmt.Errorf("wanted build failure but it succeeded instead")
 		}
+	case furanrpc.BuildState_SKIPPED:
+		if !skip {
+			return fmt.Errorf("unexpected build skipped")
+		}
 	default:
 		return fmt.Errorf("unexpected final build status: %v", bs.State)
 	}
@@ -217,7 +249,7 @@ func NewInClusterK8sClient() (kubernetes.Interface, error) {
 }
 
 func GetAPIKey() (uuid.UUID, error) {
-	db, err := datalayer.NewRawPGClient(os.Getenv("DB_URI"))
+	db, err := datalayer.NewRawPGClient(os.Getenv("DB_URI"), 1)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("error getting postgres client: %w", err)
 	}
