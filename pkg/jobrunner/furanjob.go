@@ -135,7 +135,7 @@ func truncateName(s string, n uint) string {
 // JobLabel is a label added to every build job to aid search/aggregation
 var JobLabel = "created-by:furan2"
 
-var BuildKitImage = "moby/buildkit:v0.7.2-rootless"
+var BuildKitImage = "932427637498.dkr.ecr.us-west-2.amazonaws.com/furan2-builder:v0.7.2-rootless"
 
 // FuranJobFunc is a JobFactoryFunc that generates a Kubernetes Job to execute a build
 func FuranJobFunc(info ImageInfo, build models.Build, bkresources [2]corev1.ResourceList) *batchv1.Job {
