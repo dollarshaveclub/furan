@@ -43,7 +43,6 @@ require (
 	github.com/jackc/pgtype v1.4.2
 	github.com/jackc/pgx/v4 v4.8.1
 	github.com/jhump/protoreflect v1.7.0
-	github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
 	github.com/mholt/archiver/v3 v3.3.0
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/moby/buildkit v0.7.2

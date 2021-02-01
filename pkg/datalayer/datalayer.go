@@ -50,29 +50,30 @@ type PostgresDBLayer struct {
 var _ DataLayer = &PostgresDBLayer{}
 
 var (
-	MinPoolConns       uint32 = 5
-	MinListenPoolConns uint32 = 20
+	MaxPoolConns       uint32 = 10
+	MaxListenPoolConns uint32 = 100
 )
 
 // NewPostgresDBLayer returns a data layer object backed by PostgreSQL
 func NewPostgresDBLayer(pguri string) (*PostgresDBLayer, error) {
-	pool, err := NewRawPGClient(pguri, MinPoolConns)
+	pool, err := NewRawPGClient(pguri, MaxPoolConns)
 	if err != nil {
 		return nil, fmt.Errorf("error getting conn pool: %w", err)
 	}
-	lpool, err := NewRawPGClient(pguri, MinListenPoolConns)
+	lpool, err := NewRawPGClient(pguri, MaxListenPoolConns)
 	if err != nil {
 		return nil, fmt.Errorf("error getting listen conn pool: %w", err)
 	}
 	return &PostgresDBLayer{p: pool, lp: lpool}, err
 }
 
-func NewRawPGClient(pguri string, minconns uint32) (*pgxpool.Pool, error) {
+func NewRawPGClient(pguri string, maxconns uint32) (*pgxpool.Pool, error) {
 	dbcfg, err := pgxpool.ParseConfig(pguri)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing pg db uri: %w", err)
 	}
-	dbcfg.MinConns = int32(minconns)
+	dbcfg.MinConns = 2
+	dbcfg.MaxConns = int32(maxconns)
 	dbcfg.HealthCheckPeriod = 5 * time.Second
 	dbcfg.MaxConnIdleTime = 10 * time.Second
 	dbcfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
