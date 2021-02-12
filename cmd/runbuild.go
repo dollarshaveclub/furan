@@ -9,7 +9,10 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/moby/buildkit/session"
 	"github.com/spf13/cobra"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
+	"github.com/dollarshaveclub/furan/pkg/apm"
 	"github.com/dollarshaveclub/furan/pkg/auth"
 	"github.com/dollarshaveclub/furan/pkg/builder"
 	"github.com/dollarshaveclub/furan/pkg/buildkit"
@@ -48,6 +51,40 @@ func init() {
 }
 
 func runbuild(cmd *cobra.Command, args []string) error {
+	if apmConfig.Profiling {
+		err := profiler.Start(
+			profiler.WithService(apmConfig.App),
+			profiler.WithEnv(apmConfig.Environment),
+		)
+		if err != nil {
+			clierr("error starting profiler: %v", err)
+		}
+		defer profiler.Stop()
+	}
+
+	var err error
+	ctx := context.Background()
+
+	if apmConfig.APM {
+		tracer.Start(
+			tracer.WithAgentAddr(apmConfig.Addr),
+			tracer.WithService(apmConfig.App),
+			tracer.WithEnv(apmConfig.Environment),
+			tracer.WithGlobalTag("buildid", buildid),
+		)
+		defer tracer.Stop()
+
+		span := tracer.StartSpan("runbuild")
+		defer func() {
+			span.Finish(tracer.WithError(err))
+		}()
+
+		ctx = apm.NewAPMContext(ctx, span)
+	}
+
+	setupdone := apm.StartChildSpan(ctx, "setup", nil)
+	defer setupdone(err)
+
 	dl, err := datalayer.NewPostgresDBLayer(dbConfig.PostgresURI)
 	if err != nil {
 		return fmt.Errorf("error configuring database: %w", err)
@@ -95,12 +132,16 @@ func runbuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// verify that buildkitd is up and running
-	if err := bks.VerifyAddr(); err != nil {
+	err = bks.VerifyAddr()
+	if err != nil {
 		return fmt.Errorf("error connecting to buildkitd: %v", err)
 	}
 
-	ctx, cf := context.WithTimeout(context.Background(), runbuildtimeout)
+	ctx, cf := context.WithTimeout(ctx, runbuildtimeout)
 	defer cf()
 
-	return bm.Run(ctx, bid)
+	setupdone(nil)
+
+	err = bm.Run(ctx, bid)
+	return err
 }

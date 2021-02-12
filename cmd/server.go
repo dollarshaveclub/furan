@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/dollarshaveclub/furan/pkg/builder"
@@ -22,9 +23,11 @@ import (
 	"github.com/dollarshaveclub/furan/pkg/grpc"
 	"github.com/dollarshaveclub/furan/pkg/jobrunner"
 	"github.com/dollarshaveclub/furan/pkg/models"
+	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
 
 var serverConfig config.ServerConfig
+var apmConfig config.APMConfig
 
 var serverCmd = &cobra.Command{
 	Use:   "server",
@@ -99,6 +102,13 @@ func serverAndRunnerFlags(cmd *cobra.Command) {
 	// ECR
 	cmd.PersistentFlags().BoolVar(&awsConfig.EnableECR, "ecr", false, "Enable AWS ECR support")
 	cmd.PersistentFlags().StringSliceVar(&awsConfig.ECRRegistryHosts, "ecr-registry-hosts", []string{}, "ECR registry hosts (ex: 123456789.dkr.ecr.us-west-2.amazonaws.com) to authorize for base images")
+
+	// APM/Profiling
+	cmd.PersistentFlags().BoolVar(&apmConfig.APM, "enable-apm", true, "Enable APM")
+	cmd.PersistentFlags().BoolVar(&apmConfig.Profiling, "enable-profiling", true, "Enable continuous profiling")
+	cmd.PersistentFlags().StringVar(&apmConfig.Addr, "apm-addr", "datadog:8126", "APM/profiling agent address")
+	cmd.PersistentFlags().StringVar(&apmConfig.App, "apm-svc-name", "furan2", "APM/profiling service name")
+	cmd.PersistentFlags().StringVar(&apmConfig.Environment, "apm-env-name", "production", "APM/profiling environment")
 }
 
 func init() {
@@ -149,6 +159,25 @@ func cachedefaults() furanrpc.BuildCacheOpts {
 }
 
 func server(cmd *cobra.Command, args []string) {
+	if apmConfig.Profiling {
+		err := profiler.Start(
+			profiler.WithService(apmConfig.App),
+			profiler.WithEnv(apmConfig.Environment),
+		)
+		if err != nil {
+			clierr("error starting profiler: %v", err)
+		}
+		defer profiler.Stop()
+	}
+	if apmConfig.APM {
+		tracer.Start(
+			tracer.WithAgentAddr(apmConfig.Addr),
+			tracer.WithService(apmConfig.App),
+			tracer.WithEnv(apmConfig.Environment),
+		)
+		defer tracer.Stop()
+	}
+
 	dl, err := datalayer.NewPostgresDBLayer(dbConfig.PostgresURI)
 	if err != nil {
 		clierr("error configuring database: %v", err)
@@ -190,7 +219,7 @@ func server(cmd *cobra.Command, args []string) {
 	}
 
 	gopts := grpc.Options{
-		TraceSvcName:            tracesvcname,
+		Tracing:                 apmConfig,
 		CredentialDecryptionKey: dbConfig.CredEncKeyArray,
 		Cache:                   cachedefaults(),
 		TLSCertificate:          cert,

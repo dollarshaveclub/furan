@@ -20,6 +20,12 @@ import (
 	"gopkg.in/DataDog/dd-trace-go.v1/internal/version"
 )
 
+const (
+	// headerComputedTopLevel specifies that the client has marked top-level spans, when set.
+	// Any non-empty value will mean 'yes'.
+	headerComputedTopLevel = "Datadog-Client-Computed-Top-Level"
+)
+
 var defaultClient = &http.Client{
 	// We copy the transport to avoid using the default one, as it might be
 	// augmented with tracing and we don't want these calls to be recorded.
@@ -52,13 +58,15 @@ type transport interface {
 	// send sends the payload p to the agent using the transport set up.
 	// It returns a non-nil response body when no error occurred.
 	send(p *payload) (body io.ReadCloser, err error)
+	// endpoint returns the URL to which the transport will send traces.
+	endpoint() string
 }
 
 // newTransport returns a new Transport implementation that sends traces to a
 // trace agent running on the given hostname and port, using a given
-// http.RoundTripper. If the zero values for hostname and port are provided,
+// *http.Client. If the zero values for hostname and port are provided,
 // the default values will be used ("localhost" for hostname, and "8126" for
-// port). If roundTripper is nil, a default is used.
+// port). If client is nil, a default is used.
 //
 // In general, using this method is only necessary if you have a trace agent
 // running on a non-default port, if it's located on another machine, or when
@@ -112,6 +120,7 @@ func (t *httpTransport) send(p *payload) (body io.ReadCloser, err error) {
 	}
 	req.Header.Set(traceCountHeader, strconv.Itoa(p.itemCount()))
 	req.Header.Set("Content-Length", strconv.Itoa(p.size()))
+	req.Header.Set(headerComputedTopLevel, "yes")
 	response, err := t.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -130,6 +139,10 @@ func (t *httpTransport) send(p *payload) (body io.ReadCloser, err error) {
 		return nil, fmt.Errorf("%s", txt)
 	}
 	return response.Body, nil
+}
+
+func (t *httpTransport) endpoint() string {
+	return t.traceURL
 }
 
 // resolveAddr resolves the given agent address and fills in any missing host

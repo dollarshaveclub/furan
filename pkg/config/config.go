@@ -39,6 +39,12 @@ type DBConfig struct {
 	CredEncKeyArray         [32]byte
 }
 
+type APMConfig struct {
+	Addr string
+	App, Environment string
+	APM, Profiling bool
+}
+
 type ServerConfig struct {
 	HTTPSAddr string
 	GRPCAddr  string

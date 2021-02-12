@@ -199,6 +199,7 @@ github.com/google/gofuzz
 github.com/google/shlex
 # github.com/google/uuid v1.1.2
 ## explicit
+github.com/google/uuid
 # github.com/googleapis/gnostic v0.4.1
 github.com/googleapis/gnostic/compiler
 github.com/googleapis/gnostic/extensions
@@ -279,8 +280,6 @@ github.com/jhump/protoreflect/desc/internal
 github.com/jhump/protoreflect/grpcreflect
 github.com/jhump/protoreflect/internal
 github.com/jhump/protoreflect/internal/codec
-# github.com/jinzhu/copier v0.0.0-20190924061706-b57f9002281a
-## explicit
 # github.com/jmespath/go-jmespath v0.3.0
 github.com/jmespath/go-jmespath
 # github.com/json-iterator/go v1.1.10
@@ -434,6 +433,7 @@ golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
 golang.org/x/sys/unix
 golang.org/x/sys/windows
+golang.org/x/sys/windows/registry
 # golang.org/x/text v0.3.3
 golang.org/x/text/cases
 golang.org/x/text/internal
@@ -545,7 +545,7 @@ google.golang.org/protobuf/types/descriptorpb
 google.golang.org/protobuf/types/known/anypb
 google.golang.org/protobuf/types/known/durationpb
 google.golang.org/protobuf/types/known/timestamppb
-# gopkg.in/DataDog/dd-trace-go.v1 v1.25.0
+# gopkg.in/DataDog/dd-trace-go.v1 v1.28.0
 ## explicit
 gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc
 gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/internal/grpcutil
@@ -557,6 +557,7 @@ gopkg.in/DataDog/dd-trace-go.v1/internal
 gopkg.in/DataDog/dd-trace-go.v1/internal/globalconfig
 gopkg.in/DataDog/dd-trace-go.v1/internal/log
 gopkg.in/DataDog/dd-trace-go.v1/internal/version
+gopkg.in/DataDog/dd-trace-go.v1/profiler
 # gopkg.in/inf.v0 v0.9.1
 gopkg.in/inf.v0
 # gopkg.in/square/go-jose.v2 v2.5.1

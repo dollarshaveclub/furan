@@ -30,9 +30,8 @@ func TestServer_StartBuild(t *testing.T) {
 		req *furanrpc.BuildRequest
 	}
 	flds := fields{Opts: Options{
-		TraceSvcName: "",
-		Cache:        furanrpc.BuildCacheOpts{},
-		LogFunc:      nil,
+		Cache:   furanrpc.BuildCacheOpts{},
+		LogFunc: nil,
 	}}
 	reqf := func() *furanrpc.BuildRequest {
 		return &furanrpc.BuildRequest{

@@ -68,7 +68,7 @@ require (
 	google.golang.org/genproto v0.0.0-20201002142447-3860012362da // indirect
 	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.25.0
-	gopkg.in/DataDog/dd-trace-go.v1 v1.25.0
+	gopkg.in/DataDog/dd-trace-go.v1 v1.28.0
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 	k8s.io/api v0.19.1
 	k8s.io/apimachinery v0.19.2

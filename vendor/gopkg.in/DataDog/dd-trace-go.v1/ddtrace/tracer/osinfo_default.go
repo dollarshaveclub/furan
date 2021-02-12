@@ -3,9 +3,18 @@
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
 // Copyright 2016-2020 Datadog, Inc.
 
-package version
+// +build !windows,!linux,!darwin,!freebsd
 
-// Tag specifies the current release tag. It needs to be manually
-// updated. A test checks that the value of Tag never points to a
-// git tag that is older than HEAD.
-const Tag = "v1.28.0"
+package tracer
+
+import (
+	"runtime"
+)
+
+func osName() string {
+	return runtime.GOOS
+}
+
+func osVersion() string {
+	return unknown
+}

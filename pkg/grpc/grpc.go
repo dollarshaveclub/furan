@@ -18,6 +18,7 @@ import (
 	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc"
 	"k8s.io/apimachinery/pkg/api/resource"
 
+	"github.com/dollarshaveclub/furan/pkg/config"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
 	"github.com/dollarshaveclub/furan/pkg/models"
@@ -34,8 +35,7 @@ type MaxResourceLimits struct {
 }
 
 type Options struct {
-	// TraceSvcName is the service name for APM tracing (optional)
-	TraceSvcName string
+	Tracing config.APMConfig
 	// TLSCertificate is the TLS certificate used to secure the gRPC transport.
 	TLSCertificate tls.Certificate
 	// CredentialDecryptionKey is the secretbox key used to decrypt the build github credential
@@ -113,9 +113,12 @@ func (gr *Server) Listen(addr string) error {
 		return err
 	}
 
-	// APM tracing
-	tri := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName(gr.Opts.TraceSvcName))
-	stri := grpctrace.StreamServerInterceptor(grpctrace.WithServiceName(gr.Opts.TraceSvcName))
+	var tri grpc.UnaryServerInterceptor
+	var stri grpc.StreamServerInterceptor
+	if gr.Opts.Tracing.APM {
+		tri = grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName(gr.Opts.Tracing.App))
+		stri = grpctrace.StreamServerInterceptor(grpctrace.WithServiceName(gr.Opts.Tracing.App))
+	}
 
 	// API key authentication
 	// Unary
@@ -134,10 +137,17 @@ func (gr *Server) Listen(addr string) error {
 	}
 
 	ops := []grpc.ServerOption{
-		grpc.ChainStreamInterceptor(sauthi, stri),
-		grpc.ChainUnaryInterceptor(uauthi, tri),
 		grpc.Creds(credentials.NewServerTLSFromCert(&gr.Opts.TLSCertificate)),
 	}
+	var csi, cui grpc.ServerOption
+	if gr.Opts.Tracing.APM {
+		csi = grpc.ChainStreamInterceptor(sauthi, stri)
+		cui = grpc.ChainUnaryInterceptor(uauthi, tri)
+	} else {
+		csi = grpc.ChainStreamInterceptor(sauthi)
+		cui = grpc.ChainUnaryInterceptor(uauthi)
+	}
+	ops = append(ops, csi, cui)
 
 	s := grpc.NewServer(ops...)
 	gr.s = s

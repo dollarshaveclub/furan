@@ -15,9 +15,11 @@ import (
 
 	"github.com/gofrs/uuid"
 
+	"github.com/mitchellh/go-ps"
+
+	"github.com/dollarshaveclub/furan/pkg/apm"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/models"
-	"github.com/mitchellh/go-ps"
 )
 
 // Manager is an object that performs high-level management of image builds
@@ -161,6 +163,11 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 			cancelled.set(true)
 		}
 	}()
+
+	syncbuildf := apm.StartChildSpan(ctx, "syncbuild", map[string]string{
+		"source-repo": b.GitHubRepo,
+	})
+	defer syncbuildf(err)
 
 	// ensure the build is always marked as completed
 	defer func() {

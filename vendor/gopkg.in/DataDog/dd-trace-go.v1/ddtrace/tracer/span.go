@@ -67,9 +67,10 @@ type span struct {
 	ParentID uint64             `msg:"parent_id"`         // identifier of the span's direct parent
 	Error    int32              `msg:"error"`             // error status of the span; 0 means no errors
 
-	finished bool         `msg:"-"` // true if the span has been submitted to a tracer.
-	context  *spanContext `msg:"-"` // span propagation context
-	taskEnd  func()       // ends execution tracer (runtime/trace) task, if started
+	noDebugStack bool         `msg:"-"` // disables debug stack traces
+	finished     bool         `msg:"-"` // true if the span has been submitted to a tracer.
+	context      *spanContext `msg:"-"` // span propagation context
+	taskEnd      func()       // ends execution tracer (runtime/trace) task, if started
 }
 
 // Context yields the SpanContext for this Span. Note that the return
@@ -260,7 +261,9 @@ func (s *span) setMetric(key string, v float64) {
 func (s *span) Finish(opts ...ddtrace.FinishOption) {
 	t := now()
 	if len(opts) > 0 {
-		var cfg ddtrace.FinishConfig
+		cfg := ddtrace.FinishConfig{
+			NoDebugStack: s.noDebugStack,
+		}
 		for _, fn := range opts {
 			fn(&cfg)
 		}
@@ -350,8 +353,8 @@ func (s *span) Format(f fmt.State, c rune) {
 			fmt.Fprintf(f, "dd.service=%s ", svc)
 		}
 		if tr, ok := internal.GetGlobalTracer().(*tracer); ok {
-			if env, ok := tr.config.globalTags[ext.Environment]; ok {
-				fmt.Fprintf(f, "dd.env=%s ", env)
+			if tr.config.env != "" {
+				fmt.Fprintf(f, "dd.env=%s ", tr.config.env)
 			}
 			if tr.config.version != "" {
 				fmt.Fprintf(f, "dd.version=%s ", tr.config.version)
@@ -378,4 +381,7 @@ const (
 	keyRulesSamplerAppliedRate = "_dd.rule_psr"
 	keyRulesSamplerLimiterRate = "_dd.limit_psr"
 	keyMeasured                = "_dd.measured"
+	// keyTopLevel is the key of top level metric indicating if a span is top level.
+	// A top level span is a local root (parent span of the local trace) or the first span of each service.
+	keyTopLevel = "_dd.top_level"
 )
