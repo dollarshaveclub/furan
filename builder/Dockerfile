@@ -1,4 +1,4 @@
-FROM moby/buildkit:v0.7.2-rootless
+FROM moby/buildkit:v0.8.1-rootless
 
 ADD bkrunner.sh /
 
