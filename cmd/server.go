@@ -108,7 +108,7 @@ func serverAndRunnerFlags(cmd *cobra.Command) {
 	cmd.PersistentFlags().BoolVar(&apmConfig.Profiling, "enable-profiling", true, "Enable continuous profiling")
 	cmd.PersistentFlags().StringVar(&apmConfig.Addr, "apm-addr", "datadog:8126", "APM/profiling agent address")
 	cmd.PersistentFlags().StringVar(&apmConfig.App, "apm-svc-name", "furan2", "APM/profiling service name")
-	cmd.PersistentFlags().StringVar(&apmConfig.Environment, "apm-env-name", "production", "APM/profiling environment")
+	cmd.PersistentFlags().StringVar(&apmConfig.Environment, "apm-env-name", "development", "APM/profiling environment")
 }
 
 func init() {

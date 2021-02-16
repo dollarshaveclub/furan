@@ -78,6 +78,20 @@ spec:
             - "--s3-cache-key-pfx"
             - "{{ .Values.app.aws.s3keypfx }}"
             {{ end }}
+            {{ if or .Values.app.datadog.apm .Values.app.datadog.profiling }}
+            {{ if .Values.app.datadog.apm }}
+            - "--enable-apm=true"
+            {{ end }}
+            {{ if .Values.app.datadog.profiling }}
+            - "--enable-profiling=true"
+            {{ end }}
+            - "--apm-addr"
+            - "{{ .Values.app.datadog.addr }}"
+            - "--apm-svc-name"
+            - "{{ .Values.app.datadog.service }}"
+            - "--apm-env-name"
+            - "{{ .Values.app.datadog.environment }}"
+            {{ end }}
             # === End auto-injected job flags ===
             - 'server'
             - '--grpc-addr'

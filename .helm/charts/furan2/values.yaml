@@ -17,6 +17,12 @@ app:
   builder_image: ''
   secrets_backend: "vault"
   secrets_mapping: ""
+  datadog:
+    apm: true
+    profiling: true
+    addr: 'datadog:8126'
+    service: 'furan2'
+    environment: 'development'
   # if using the "env" secrets backend, map these k8s secret names
   # to the corresponding env vars
   env_secret_names:
