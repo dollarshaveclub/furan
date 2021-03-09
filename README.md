@@ -41,12 +41,21 @@ Furan's only runtime dependencies are PostgreSQL and Kubernetes.
 At a high level, the Furan API consists of the following RPCs:
 
 1. StartBuild (asynchronously begin a build/push job)
-2. MonitorBuild (streaming RPC, get a realtime stream of build messages for a running job)
+2. MonitorBuild (get a realtime stream of build messages for a running job)
 3. GetBuildStatus (get the status of a running job)
 4. ListBuilds (get a list of build jobs according to a set of criteria)
 5. CancelBuild (abort an actively running job)
 
 For more details, see the [protobuf definition](protos/api.proto).
 
+<h3>Differences between Furan 1 and 2</h3>
+
+Furan 1 did not require Kubernetes, and executed builds in the same server process via an external Docker Engine. If running
+in Kubernetes, this was a Docker-in-Docker (DinD) sidecar. To support the asynchronous API, Furan 1 had a large set
+of dependencies including Kafka, Consul and Cassandra/ScyllaDB.
+
+In contrast, Furan 2 has greatly decreased runtime dependencies, simplified deployment and more efficient use of compute
+resources and now requires Kubernetes. Furan 2 uses BuildKit instead of Docker Engine and uses rootless build jobs by default. Furan 2 also now
+supports build cache.
 
 <h3 align="center">&middot;&middot;&middot;</h3>
