@@ -17,15 +17,13 @@ type countMetric struct {
 	value int64
 	name  string
 	tags  []string
-	rate  float64
 }
 
-func newCountMetric(name string, value int64, tags []string, rate float64) *countMetric {
+func newCountMetric(name string, value int64, tags []string) *countMetric {
 	return &countMetric{
 		value: value,
 		name:  name,
 		tags:  tags,
-		rate:  rate,
 	}
 }
 
@@ -38,7 +36,7 @@ func (c *countMetric) flushUnsafe() metric {
 		metricType: count,
 		name:       c.name,
 		tags:       c.tags,
-		rate:       c.rate,
+		rate:       1,
 		ivalue:     c.value,
 	}
 }
@@ -49,15 +47,13 @@ type gaugeMetric struct {
 	value uint64
 	name  string
 	tags  []string
-	rate  float64
 }
 
-func newGaugeMetric(name string, value float64, tags []string, rate float64) *gaugeMetric {
+func newGaugeMetric(name string, value float64, tags []string) *gaugeMetric {
 	return &gaugeMetric{
 		value: math.Float64bits(value),
 		name:  name,
 		tags:  tags,
-		rate:  rate,
 	}
 }
 
@@ -70,7 +66,7 @@ func (g *gaugeMetric) flushUnsafe() metric {
 		metricType: gauge,
 		name:       g.name,
 		tags:       g.tags,
-		rate:       g.rate,
+		rate:       1,
 		fvalue:     math.Float64frombits(g.value),
 	}
 }
@@ -81,16 +77,14 @@ type setMetric struct {
 	data map[string]struct{}
 	name string
 	tags []string
-	rate float64
 	sync.Mutex
 }
 
-func newSetMetric(name string, value string, tags []string, rate float64) *setMetric {
+func newSetMetric(name string, value string, tags []string) *setMetric {
 	set := &setMetric{
 		data: map[string]struct{}{},
 		name: name,
 		tags: tags,
-		rate: rate,
 	}
 	set.data[value] = struct{}{}
 	return set
@@ -116,10 +110,72 @@ func (s *setMetric) flushUnsafe() []metric {
 			metricType: set,
 			name:       s.name,
 			tags:       s.tags,
-			rate:       s.rate,
+			rate:       1,
 			svalue:     value,
 		}
 		i++
 	}
 	return metrics
+}
+
+// Histograms, Distributions and Timings
+
+type bufferedMetric struct {
+	sync.Mutex
+
+	data []float64
+	name string
+	// Histograms and Distributions store tags as one string since we need
+	// to compute its size multiple time when serializing.
+	tags  string
+	mtype metricType
+}
+
+func (s *bufferedMetric) sample(v float64) {
+	s.Lock()
+	defer s.Unlock()
+	s.data = append(s.data, v)
+}
+
+func (s *bufferedMetric) flushUnsafe() metric {
+	return metric{
+		metricType: s.mtype,
+		name:       s.name,
+		stags:      s.tags,
+		rate:       1,
+		fvalues:    s.data,
+	}
+}
+
+type histogramMetric = bufferedMetric
+
+func newHistogramMetric(name string, value float64, stringTags string) *histogramMetric {
+	return &histogramMetric{
+		data:  []float64{value},
+		name:  name,
+		tags:  stringTags,
+		mtype: histogramAggregated,
+	}
+}
+
+type distributionMetric = bufferedMetric
+
+func newDistributionMetric(name string, value float64, stringTags string) *distributionMetric {
+	return &distributionMetric{
+		data:  []float64{value},
+		name:  name,
+		tags:  stringTags,
+		mtype: distributionAggregated,
+	}
+}
+
+type timingMetric = bufferedMetric
+
+func newTimingMetric(name string, value float64, stringTags string) *timingMetric {
+	return &timingMetric{
+		data:  []float64{value},
+		name:  name,
+		tags:  stringTags,
+		mtype: timingAggregated,
+	}
 }

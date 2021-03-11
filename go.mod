@@ -11,7 +11,6 @@ replace github.com/containerd/containerd v1.4.0-0 => github.com/containerd/conta
 replace github.com/jaguilar/vt100 => github.com/tonistiigi/vt100 v0.0.0-20190402012908-ad4c4a574305
 
 require (
-	github.com/DataDog/datadog-go v3.7.2+incompatible // indirect
 	github.com/Microsoft/hcsshim v0.8.10 // indirect
 	github.com/Microsoft/hcsshim/test v0.0.0-20200826032352-301c83a30e7c // indirect
 	github.com/aws/aws-sdk-go v1.33.7
@@ -68,7 +67,7 @@ require (
 	google.golang.org/genproto v0.0.0-20201002142447-3860012362da // indirect
 	google.golang.org/grpc v1.32.0
 	google.golang.org/protobuf v1.25.0
-	gopkg.in/DataDog/dd-trace-go.v1 v1.28.0
+	gopkg.in/DataDog/dd-trace-go.v1 v1.29.0
 	gopkg.in/yaml.v2 v2.3.0 // indirect
 	k8s.io/api v0.19.1
 	k8s.io/apimachinery v0.19.2

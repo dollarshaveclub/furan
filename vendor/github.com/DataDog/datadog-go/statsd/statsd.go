@@ -6,19 +6,6 @@ adding tags and histograms and pushing upstream to Datadog.
 
 Refer to http://docs.datadoghq.com/guides/dogstatsd/ for information about DogStatsD.
 
-Example Usage:
-
-    // Create the client
-    c, err := statsd.New("127.0.0.1:8125")
-    if err != nil {
-        log.Fatal(err)
-    }
-    // Prefix every metric with the app name
-    c.Namespace = "flubber."
-    // Send the EC2 availability zone as a tag with every metric
-    c.Tags = append(c.Tags, "us-east-1a")
-    err = c.Gauge("request.duration", 1.2, nil, 1)
-
 statsd is based on go-statsd-client.
 */
 package statsd
@@ -57,30 +44,22 @@ const DefaultUDSBufferPoolSize = 512
 /*
 DefaultMaxAgentPayloadSize is the default maximum payload size the agent
 can receive. This can be adjusted by changing dogstatsd_buffer_size in the
-agent configuration file datadog.yaml.
+agent configuration file datadog.yaml. This is also used as the optimal payload size
+for UDS datagrams.
 */
 const DefaultMaxAgentPayloadSize = 8192
-
-/*
-TelemetryInterval is the interval at which telemetry will be sent by the client.
-*/
-const TelemetryInterval = 10 * time.Second
-
-/*
-clientTelemetryTag is a tag identifying this specific client.
-*/
-var clientTelemetryTag = "client:go"
-
-/*
-clientVersionTelemetryTag is a tag identifying this specific client version.
-*/
-var clientVersionTelemetryTag = "client_version:3.7.2"
 
 /*
 UnixAddressPrefix holds the prefix to use to enable Unix Domain Socket
 traffic instead of UDP.
 */
 const UnixAddressPrefix = "unix://"
+
+/*
+WindowsPipeAddressPrefix holds the prefix to use to enable Windows Named Pipes
+traffic instead of UDP.
+*/
+const WindowsPipeAddressPrefix = `\\.\pipe\`
 
 /*
 ddEnvTagsMapping is a mapping of each "DD_" prefixed environment variable
@@ -103,9 +82,12 @@ const (
 	gauge metricType = iota
 	count
 	histogram
+	histogramAggregated
 	distribution
+	distributionAggregated
 	set
 	timing
+	timingAggregated
 	event
 	serviceCheck
 )
@@ -117,17 +99,25 @@ const (
 	ChannelMode
 )
 
+const (
+	WriterNameUDP     string = "udp"
+	WriterNameUDS     string = "uds"
+	WriterWindowsPipe string = "pipe"
+)
+
 type metric struct {
 	metricType metricType
 	namespace  string
 	globalTags []string
 	name       string
 	fvalue     float64
+	fvalues    []float64
 	ivalue     int64
 	svalue     string
 	evalue     *Event
 	scvalue    *ServiceCheck
 	tags       []string
+	stags      string
 	rate       float64
 }
 
@@ -205,70 +195,66 @@ type Client struct {
 	// Tags are global tags to be added to every statsd call
 	Tags []string
 	// skipErrors turns off error passing and allows UDS to emulate UDP behaviour
-	SkipErrors    bool
-	flushTime     time.Duration
-	bufferPool    *bufferPool
-	buffer        *statsdBuffer
-	metrics       *ClientMetrics
-	telemetryTags []string
-	stop          chan struct{}
-	wg            sync.WaitGroup
-	bufferShards  []*worker
-	closerLock    sync.Mutex
-	receiveMode   ReceivingMode
-	agg           *aggregator
-	options       []Option
-	addrOption    string
+	SkipErrors  bool
+	flushTime   time.Duration
+	metrics     *ClientMetrics
+	telemetry   *telemetryClient
+	stop        chan struct{}
+	wg          sync.WaitGroup
+	workers     []*worker
+	closerLock  sync.Mutex
+	receiveMode ReceivingMode
+	agg         *aggregator
+	aggHistDist *aggregator
+	options     []Option
+	addrOption  string
 }
 
 // ClientMetrics contains metrics about the client
 type ClientMetrics struct {
-	TotalMetrics          uint64
-	TotalEvents           uint64
-	TotalServiceChecks    uint64
-	TotalDroppedOnReceive uint64
+	TotalMetrics             uint64
+	TotalMetricsGauge        uint64
+	TotalMetricsCount        uint64
+	TotalMetricsHistogram    uint64
+	TotalMetricsDistribution uint64
+	TotalMetricsSet          uint64
+	TotalMetricsTiming       uint64
+	TotalEvents              uint64
+	TotalServiceChecks       uint64
+	TotalDroppedOnReceive    uint64
 }
 
 // Verify that Client implements the ClientInterface.
 // https://golang.org/doc/faq#guarantee_satisfies_interface
 var _ ClientInterface = &Client{}
 
-// New returns a pointer to a new Client given an addr in the format "hostname:port" or
-// "unix:///path/to/socket".
+func resolveAddr(addr string) (statsdWriter, string, error) {
+	switch {
+	case strings.HasPrefix(addr, WindowsPipeAddressPrefix):
+		w, err := newWindowsPipeWriter(addr)
+		return w, WriterWindowsPipe, err
+	case strings.HasPrefix(addr, UnixAddressPrefix):
+		w, err := newUDSWriter(addr[len(UnixAddressPrefix):])
+		return w, WriterNameUDS, err
+	default:
+		w, err := newUDPWriter(addr)
+		return w, WriterNameUDP, err
+	}
+}
+
+// New returns a pointer to a new Client given an addr in the format "hostname:port" for UDP,
+// "unix:///path/to/socket" for UDS or "\\.\pipe\path\to\pipe" for Windows Named Pipes.
 func New(addr string, options ...Option) (*Client, error) {
-	var w statsdWriter
 	o, err := resolveOptions(options)
 	if err != nil {
 		return nil, err
 	}
 
-	var writerType string
-	optimalPayloadSize := OptimalUDPPayloadSize
-	defaultBufferPoolSize := DefaultUDPBufferPoolSize
-	if !strings.HasPrefix(addr, UnixAddressPrefix) {
-		w, err = newUDPWriter(addr)
-		writerType = "udp"
-	} else {
-		// FIXME: The agent has a performance pitfall preventing us from using better defaults here.
-		// Once it's fixed, use `DefaultMaxAgentPayloadSize` and `DefaultUDSBufferPoolSize` instead.
-		optimalPayloadSize = OptimalUDPPayloadSize
-		defaultBufferPoolSize = DefaultUDPBufferPoolSize
-		w, err = newUDSWriter(addr[len(UnixAddressPrefix):])
-		writerType = "uds"
-	}
+	w, writerType, err := resolveAddr(addr)
 	if err != nil {
 		return nil, err
 	}
 
-	if o.MaxBytesPerPayload == 0 {
-		o.MaxBytesPerPayload = optimalPayloadSize
-	}
-	if o.BufferPoolSize == 0 {
-		o.BufferPoolSize = defaultBufferPoolSize
-	}
-	if o.SenderQueueSize == 0 {
-		o.SenderQueueSize = defaultBufferPoolSize
-	}
 	client, err := newWithWriter(w, o, writerType)
 	if err == nil {
 		client.options = append(client.options, options...)
@@ -309,9 +295,13 @@ func newWithWriter(w statsdWriter, o *Options, writerName string) (*Client, erro
 		Tags:      o.Tags,
 		metrics:   &ClientMetrics{},
 	}
-	if o.Aggregation {
+	if o.Aggregation || o.ExtendedAggregation {
 		c.agg = newAggregator(&c)
 		c.agg.start(o.AggregationFlushInterval)
+
+		if o.ExtendedAggregation {
+			c.aggHistDist = c.agg
+		}
 	}
 
 	// Inject values of DD_* environment variables as global tags.
@@ -321,43 +311,61 @@ func newWithWriter(w statsdWriter, o *Options, writerName string) (*Client, erro
 		}
 	}
 
-	c.telemetryTags = append(c.Tags, clientTelemetryTag, clientVersionTelemetryTag, "client_transport:"+writerName)
-
 	if o.MaxBytesPerPayload == 0 {
-		o.MaxBytesPerPayload = OptimalUDPPayloadSize
-	}
-	if o.BufferPoolSize == 0 {
-		o.BufferPoolSize = DefaultUDPBufferPoolSize
-	}
-	if o.SenderQueueSize == 0 {
-		o.SenderQueueSize = DefaultUDPBufferPoolSize
-	}
-
-	c.receiveMode = o.ReceiveMode
-	c.bufferPool = newBufferPool(o.BufferPoolSize, o.MaxBytesPerPayload, o.MaxMessagesPerPayload)
-	c.buffer = c.bufferPool.borrowBuffer()
-	c.sender = newSender(w, o.SenderQueueSize, c.bufferPool)
-	for i := 0; i < o.BufferShardCount; i++ {
-		w := newWorker(c.bufferPool, c.sender)
-		c.bufferShards = append(c.bufferShards, w)
-		if c.receiveMode == ChannelMode {
-			w.startReceivingMetric(o.ChannelModeBufferSize) // TODO make it configurable
+		if writerName == WriterNameUDS {
+			o.MaxBytesPerPayload = DefaultMaxAgentPayloadSize
+		} else {
+			o.MaxBytesPerPayload = OptimalUDPPayloadSize
 		}
 	}
+	if o.BufferPoolSize == 0 {
+		if writerName == WriterNameUDS {
+			o.BufferPoolSize = DefaultUDSBufferPoolSize
+		} else {
+			o.BufferPoolSize = DefaultUDPBufferPoolSize
+		}
+	}
+	if o.SenderQueueSize == 0 {
+		if writerName == WriterNameUDS {
+			o.SenderQueueSize = DefaultUDSBufferPoolSize
+		} else {
+			o.SenderQueueSize = DefaultUDPBufferPoolSize
+		}
+	}
+
+	bufferPool := newBufferPool(o.BufferPoolSize, o.MaxBytesPerPayload, o.MaxMessagesPerPayload)
+	c.sender = newSender(w, o.SenderQueueSize, bufferPool)
+	c.receiveMode = o.ReceiveMode
+	for i := 0; i < o.BufferShardCount; i++ {
+		w := newWorker(bufferPool, c.sender)
+		c.workers = append(c.workers, w)
+		if c.receiveMode == ChannelMode {
+			w.startReceivingMetric(o.ChannelModeBufferSize)
+		}
+	}
+
 	c.flushTime = o.BufferFlushInterval
 	c.stop = make(chan struct{}, 1)
+
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		c.watch()
 	}()
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		if o.Telemetry {
-			c.telemetry()
+
+	if o.Telemetry {
+		if o.TelemetryAddr == "" {
+			c.telemetry = newTelemetryClient(&c, writerName, o.DevMode)
+		} else {
+			var err error
+			c.telemetry, err = newTelemetryClientWithCustomAddr(&c, writerName, o.DevMode, o.TelemetryAddr, bufferPool)
+			if err != nil {
+				return nil, err
+			}
 		}
-	}()
+		c.telemetry.run(&c.wg, c.stop)
+	}
+
 	return &c, nil
 }
 
@@ -370,7 +378,8 @@ func NewBuffered(addr string, buflen int) (*Client, error) {
 	return New(addr, WithMaxMessagesPerPayload(buflen))
 }
 
-// SetWriteTimeout allows the user to set a custom UDS write timeout. Not supported for UDP.
+// SetWriteTimeout allows the user to set a custom UDS write timeout. Not supported for UDP
+// or Windows Pipes.
 func (c *Client) SetWriteTimeout(d time.Duration) error {
 	if c == nil {
 		return ErrNoClient
@@ -384,7 +393,7 @@ func (c *Client) watch() {
 	for {
 		select {
 		case <-ticker.C:
-			for _, w := range c.bufferShards {
+			for _, w := range c.workers {
 				w.flush()
 			}
 		case <-c.stop:
@@ -394,69 +403,46 @@ func (c *Client) watch() {
 	}
 }
 
-func (c *Client) telemetry() {
-	ticker := time.NewTicker(TelemetryInterval)
-	for {
-		select {
-		case <-ticker.C:
-			for _, m := range c.flushTelemetry() {
-				c.send(m)
-			}
-		case <-c.stop:
-			ticker.Stop()
-			return
-		}
-	}
-}
-
-// flushTelemetry returns Telemetry metrics to be flushed. It's its own function to ease testing.
-func (c *Client) flushTelemetry() []metric {
-	m := []metric{}
-
-	// same as Count but without global namespace
-	telemetryCount := func(name string, value int64) {
-		m = append(m, metric{metricType: count, name: name, ivalue: value, tags: c.telemetryTags, rate: 1})
-	}
-
-	clientMetrics := c.FlushTelemetryMetrics()
-	telemetryCount("datadog.dogstatsd.client.metrics", int64(clientMetrics.TotalMetrics))
-	telemetryCount("datadog.dogstatsd.client.events", int64(clientMetrics.TotalEvents))
-	telemetryCount("datadog.dogstatsd.client.service_checks", int64(clientMetrics.TotalServiceChecks))
-	telemetryCount("datadog.dogstatsd.client.metric_dropped_on_receive", int64(clientMetrics.TotalDroppedOnReceive))
-
-	senderMetrics := c.sender.flushTelemetryMetrics()
-	telemetryCount("datadog.dogstatsd.client.packets_sent", int64(senderMetrics.TotalSentPayloads))
-	telemetryCount("datadog.dogstatsd.client.bytes_sent", int64(senderMetrics.TotalSentBytes))
-	telemetryCount("datadog.dogstatsd.client.packets_dropped", int64(senderMetrics.TotalDroppedPayloads))
-	telemetryCount("datadog.dogstatsd.client.bytes_dropped", int64(senderMetrics.TotalDroppedBytes))
-	telemetryCount("datadog.dogstatsd.client.packets_dropped_queue", int64(senderMetrics.TotalDroppedPayloadsQueueFull))
-	telemetryCount("datadog.dogstatsd.client.bytes_dropped_queue", int64(senderMetrics.TotalDroppedBytesQueueFull))
-	telemetryCount("datadog.dogstatsd.client.packets_dropped_writer", int64(senderMetrics.TotalDroppedPayloadsWriter))
-	telemetryCount("datadog.dogstatsd.client.bytes_dropped_writer", int64(senderMetrics.TotalDroppedBytesWriter))
-	return m
-}
-
-// Flush forces a flush of all the queued dogstatsd payloads
-// This method is blocking and will not return until everything is sent
-// through the network
+// Flush forces a flush of all the queued dogstatsd payloads This method is
+// blocking and will not return until everything is sent through the network.
+// In MutexMode, this will also block sampling new data to the client while the
+// workers and sender are flushed.
 func (c *Client) Flush() error {
 	if c == nil {
 		return ErrNoClient
 	}
-	for _, w := range c.bufferShards {
-		w.flush()
+	if c.agg != nil {
+		c.agg.sendMetrics()
 	}
+	for _, w := range c.workers {
+		w.pause()
+		defer w.unpause()
+		w.flushUnsafe()
+	}
+	// Now that the worker are pause the sender can flush the queue between
+	// worker and senders
 	c.sender.flush()
 	return nil
 }
 
 func (c *Client) FlushTelemetryMetrics() ClientMetrics {
-	return ClientMetrics{
-		TotalMetrics:          atomic.SwapUint64(&c.metrics.TotalMetrics, 0),
-		TotalEvents:           atomic.SwapUint64(&c.metrics.TotalEvents, 0),
-		TotalServiceChecks:    atomic.SwapUint64(&c.metrics.TotalServiceChecks, 0),
-		TotalDroppedOnReceive: atomic.SwapUint64(&c.metrics.TotalDroppedOnReceive, 0),
+	cm := ClientMetrics{
+		TotalMetricsGauge:        atomic.SwapUint64(&c.metrics.TotalMetricsGauge, 0),
+		TotalMetricsCount:        atomic.SwapUint64(&c.metrics.TotalMetricsCount, 0),
+		TotalMetricsSet:          atomic.SwapUint64(&c.metrics.TotalMetricsSet, 0),
+		TotalMetricsHistogram:    atomic.SwapUint64(&c.metrics.TotalMetricsHistogram, 0),
+		TotalMetricsDistribution: atomic.SwapUint64(&c.metrics.TotalMetricsDistribution, 0),
+		TotalMetricsTiming:       atomic.SwapUint64(&c.metrics.TotalMetricsTiming, 0),
+		TotalEvents:              atomic.SwapUint64(&c.metrics.TotalEvents, 0),
+		TotalServiceChecks:       atomic.SwapUint64(&c.metrics.TotalServiceChecks, 0),
+		TotalDroppedOnReceive:    atomic.SwapUint64(&c.metrics.TotalDroppedOnReceive, 0),
 	}
+
+	cm.TotalMetrics = cm.TotalMetricsGauge + cm.TotalMetricsCount +
+		cm.TotalMetricsSet + cm.TotalMetricsHistogram +
+		cm.TotalMetricsDistribution + cm.TotalMetricsTiming
+
+	return cm
 }
 
 func (c *Client) send(m metric) error {
@@ -468,7 +454,7 @@ func (c *Client) send(m metric) error {
 	m.namespace = c.Namespace
 
 	h := hashString32(m.name)
-	worker := c.bufferShards[h%uint32(len(c.bufferShards))]
+	worker := c.workers[h%uint32(len(c.workers))]
 
 	if c.receiveMode == ChannelMode {
 		select {
@@ -486,9 +472,9 @@ func (c *Client) Gauge(name string, value float64, tags []string, rate float64) 
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsGauge, 1)
 	if c.agg != nil {
-		return c.agg.gauge(name, value, tags, rate)
+		return c.agg.gauge(name, value, tags)
 	}
 	return c.send(metric{metricType: gauge, name: name, fvalue: value, tags: tags, rate: rate})
 }
@@ -498,9 +484,9 @@ func (c *Client) Count(name string, value int64, tags []string, rate float64) er
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsCount, 1)
 	if c.agg != nil {
-		return c.agg.count(name, value, tags, rate)
+		return c.agg.count(name, value, tags)
 	}
 	return c.send(metric{metricType: count, name: name, ivalue: value, tags: tags, rate: rate})
 }
@@ -510,7 +496,10 @@ func (c *Client) Histogram(name string, value float64, tags []string, rate float
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsHistogram, 1)
+	if c.aggHistDist != nil {
+		return c.agg.histogram(name, value, tags)
+	}
 	return c.send(metric{metricType: histogram, name: name, fvalue: value, tags: tags, rate: rate})
 }
 
@@ -519,7 +508,10 @@ func (c *Client) Distribution(name string, value float64, tags []string, rate fl
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsDistribution, 1)
+	if c.aggHistDist != nil {
+		return c.agg.distribution(name, value, tags)
+	}
 	return c.send(metric{metricType: distribution, name: name, fvalue: value, tags: tags, rate: rate})
 }
 
@@ -538,9 +530,9 @@ func (c *Client) Set(name string, value string, tags []string, rate float64) err
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsSet, 1)
 	if c.agg != nil {
-		return c.agg.set(name, value, tags, rate)
+		return c.agg.set(name, value, tags)
 	}
 	return c.send(metric{metricType: set, name: name, svalue: value, tags: tags, rate: rate})
 }
@@ -556,7 +548,10 @@ func (c *Client) TimeInMilliseconds(name string, value float64, tags []string, r
 	if c == nil {
 		return ErrNoClient
 	}
-	atomic.AddUint64(&c.metrics.TotalMetrics, 1)
+	atomic.AddUint64(&c.metrics.TotalMetricsTiming, 1)
+	if c.aggHistDist != nil {
+		return c.agg.timing(name, value, tags)
+	}
 	return c.send(metric{metricType: timing, name: name, fvalue: value, tags: tags, rate: rate})
 }
 
@@ -609,7 +604,7 @@ func (c *Client) Close() error {
 	close(c.stop)
 
 	if c.receiveMode == ChannelMode {
-		for _, w := range c.bufferShards {
+		for _, w := range c.workers {
 			w.stopReceivingMetric()
 		}
 	}

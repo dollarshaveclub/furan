@@ -1,13 +1,15 @@
 // Unless explicitly stated otherwise all files in this repository are licensed
 // under the Apache License Version 2.0.
 // This product includes software developed at Datadog (https://www.datadoghq.com/).
-// Copyright 2016-2020 Datadog, Inc.
+// Copyright 2016 Datadog, Inc.
 
 package profiler
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -25,12 +27,15 @@ import (
 
 const (
 	// DefaultMutexFraction specifies the mutex profile fraction to be used with the mutex profiler.
-	// For more information or for changing this value, check runtime.SetMutexProfileFraction.
+	// For more information or for changing this value, check MutexProfileFraction
 	DefaultMutexFraction = 10
 
-	// DefaultBlockRate specifies the default block profiling rate used by the block profiler.
-	// For more information or for changing this value, check runtime.SetBlockProfileRate.
-	DefaultBlockRate = 100
+	// DefaultBlockRate specifies the default block profiling rate used by the
+	// block profiler. For more information or for changing this value, check
+	// BlockProfileRate. The default rate is chosen to prevent high overhead
+	// based on the research from:
+	// https://github.com/felixge/go-profiler-notes/blob/main/block.md#benchmarks
+	DefaultBlockRate = 10000
 
 	// DefaultPeriod specifies the default period at which profiles will be collected.
 	DefaultPeriod = time.Minute
@@ -40,13 +45,33 @@ const (
 )
 
 const (
-	defaultAPIURL    = "https://intake.profile.datadoghq.com/v1/input"
-	defaultAgentHost = "localhost"
-	defaultAgentPort = "8126"
-	defaultEnv       = "none"
+	defaultAPIURL      = "https://intake.profile.datadoghq.com/v1/input"
+	defaultAgentHost   = "localhost"
+	defaultAgentPort   = "8126"
+	defaultEnv         = "none"
+	defaultHTTPTimeout = 10 * time.Second // defines the current timeout before giving up with the send process
 )
 
-var defaultProfileTypes = []ProfileType{CPUProfile, HeapProfile}
+var defaultClient = &http.Client{
+	// We copy the transport to avoid using the default one, as it might be
+	// augmented with tracing and we don't want these calls to be recorded.
+	// See https://golang.org/pkg/net/http/#DefaultTransport .
+	Transport: &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+			DualStack: true,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	},
+	Timeout: defaultHTTPTimeout,
+}
+
+var defaultProfileTypes = []ProfileType{MetricsProfile, CPUProfile, HeapProfile}
 
 type config struct {
 	apiKey string
@@ -58,6 +83,7 @@ type config struct {
 	service, env  string
 	hostname      string
 	statsd        StatsdClient
+	httpClient    *http.Client
 	tags          []string
 	types         map[ProfileType]struct{}
 	period        time.Duration
@@ -98,6 +124,7 @@ func defaultConfig() *config {
 		apiURL:        defaultAPIURL,
 		service:       filepath.Base(os.Args[0]),
 		statsd:        &statsd.NoOpClient{},
+		httpClient:    defaultClient,
 		period:        DefaultPeriod,
 		cpuDuration:   DefaultDuration,
 		blockRate:     DefaultBlockRate,
@@ -132,7 +159,12 @@ func defaultConfig() *config {
 		WithVersion(v)(&c)
 	}
 	if v := os.Getenv("DD_TAGS"); v != "" {
-		for _, tag := range strings.Split(v, ",") {
+		sep := " "
+		if strings.Index(v, ",") > -1 {
+			// falling back to comma as separator
+			sep = ","
+		}
+		for _, tag := range strings.Split(v, sep) {
 			tag = strings.TrimSpace(tag)
 			if tag == "" {
 				continue
@@ -165,7 +197,9 @@ func WithAgentAddr(hostport string) Option {
 	}
 }
 
-// WithAPIKey specifies the API key to use when connecting to the Datadog API directly, skipping the agent.
+// WithAPIKey is deprecated and might be removed in future versions of this
+// package. It allows to skip the agent and talk to the Datadog API directly
+// using the provided API key.
 func WithAPIKey(key string) Option {
 	return func(cfg *config) {
 		cfg.apiKey = key
@@ -193,6 +227,32 @@ func CPUDuration(d time.Duration) Option {
 	}
 }
 
+// MutexProfileFraction turns on mutex profiles with rate indicating the fraction
+// of mutex contention events reported in the mutex profile.
+// On average, 1/rate events are reported.
+// Setting an aggressive rate can hurt performance.
+// For more information on this value, check runtime.SetMutexProfileFraction.
+func MutexProfileFraction(rate int) Option {
+	return func(cfg *config) {
+		cfg.addProfileType(MutexProfile)
+		cfg.mutexFraction = rate
+	}
+}
+
+// BlockProfileRate turns on block profiles with the given rate.
+// The profiler samples an average of one blocking event per rate nanoseconds spent blocked.
+// For example, set rate to 1000000000 (aka int(time.Second.Nanoseconds())) to
+// record one sample per second a goroutine is blocked.
+// A rate of 1 catches every event.
+// Setting an aggressive rate can hurt performance.
+// For more information on this value, check runtime.SetBlockProfileRate.
+func BlockProfileRate(rate int) Option {
+	return func(cfg *config) {
+		cfg.addProfileType(BlockProfile)
+		cfg.blockRate = rate
+	}
+}
+
 // WithProfileTypes specifies the profile types to be collected by the profiler.
 func WithProfileTypes(types ...ProfileType) Option {
 	return func(cfg *config) {
@@ -200,6 +260,7 @@ func WithProfileTypes(types ...ProfileType) Option {
 		for k := range cfg.types {
 			delete(cfg.types, k)
 		}
+		cfg.addProfileType(MetricsProfile) // always report metrics
 		for _, t := range types {
 			cfg.addProfileType(t)
 		}
@@ -252,4 +313,25 @@ func WithSite(site string) Option {
 		}
 		cfg.apiURL = u
 	}
+}
+
+// WithHTTPClient specifies the HTTP client to use when submitting profiles to Site.
+// In general, using this method is only necessary if you have need to customize the
+// transport layer, for instance when using a unix domain socket.
+func WithHTTPClient(client *http.Client) Option {
+	return func(cfg *config) {
+		cfg.httpClient = client
+	}
+}
+
+// WithUDS configures the HTTP client to dial the Datadog Agent via the specified Unix Domain Socket path.
+func WithUDS(socketPath string) Option {
+	return WithHTTPClient(&http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socketPath)
+			},
+		},
+		Timeout: defaultHTTPTimeout,
+	})
 }

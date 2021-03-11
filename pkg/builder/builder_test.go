@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
+	"github.com/dollarshaveclub/furan/pkg/apm"
 	"github.com/dollarshaveclub/furan/pkg/buildkit"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
@@ -18,6 +20,7 @@ import (
 	"github.com/dollarshaveclub/furan/pkg/jobrunner"
 	"github.com/dollarshaveclub/furan/pkg/models"
 	"github.com/dollarshaveclub/furan/pkg/tagcheck"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/mocktracer"
 )
 
 func TestManager_Start(t *testing.T) {
@@ -145,6 +148,7 @@ func TestManager_Run(t *testing.T) {
 		contexterr       bool
 		wantErr          bool
 		verifyfunc       func(dl datalayer.DataLayer, id uuid.UUID) error
+		verifytracerf    func(tracer mocktracer.Tracer) error
 	}{
 		{
 			name:      "success",
@@ -156,6 +160,37 @@ func TestManager_Run(t *testing.T) {
 				b, _ := dl.GetBuildByID(context.Background(), id)
 				if b.Status != models.BuildStatusSuccess {
 					return fmt.Errorf("bad status: %v (wanted Success)", b.Status)
+				}
+				return nil
+			},
+		},
+		{
+			name:      "traced",
+			commitSHA: "asdf",
+			allTagsExistFunc: func(tags []string, repo string) (bool, []string, error) {
+				return false, tags, nil
+			},
+			verifyfunc: func(dl datalayer.DataLayer, id uuid.UUID) error {
+				b, _ := dl.GetBuildByID(context.Background(), id)
+				if b.Status != models.BuildStatusSuccess {
+					return fmt.Errorf("bad status: %v (wanted Success)", b.Status)
+				}
+				return nil
+			},
+			verifytracerf: func(tracer mocktracer.Tracer) error {
+				spans := tracer.FinishedSpans()
+				if len(spans) != 2 {
+					return fmt.Errorf("wanted 2 spans: %v", spans)
+				}
+				names := make(map[string]struct{}, 2)
+				for _, s := range spans {
+					names[s.OperationName()] = struct{}{}
+				}
+				if _, ok := names["traced"]; !ok {
+					return fmt.Errorf("root span missing")
+				}
+				if _, ok := names["syncbuild"]; !ok {
+					return fmt.Errorf("child span missing")
 				}
 				return nil
 			},
@@ -406,6 +441,15 @@ func TestManager_Run(t *testing.T) {
 				m.GitHubTokenKey = [32]byte{}
 			}
 
+			var mt mocktracer.Tracer
+			var span tracer.Span
+			if tt.verifytracerf != nil {
+				mt = mocktracer.Start()
+				defer mt.Stop()
+				span = tracer.StartSpan(tt.name)
+				ctx = apm.NewAPMContext(ctx, span)
+			}
+
 			if tt.cancel {
 				go func() {
 					<-buildEntered
@@ -427,6 +471,13 @@ func TestManager_Run(t *testing.T) {
 			if tt.verifyfunc != nil {
 				if err := tt.verifyfunc(dl, id); err != nil {
 					t.Errorf("verify failed: %v", err)
+				}
+			}
+
+			if tt.verifytracerf != nil {
+				span.Finish()
+				if err := tt.verifytracerf(mt); err != nil {
+					t.Errorf("tracer verify failed: %v", err)
 				}
 			}
 		})
