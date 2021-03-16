@@ -12,7 +12,6 @@ import (
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 
-	"github.com/dollarshaveclub/furan/pkg/apm"
 	"github.com/dollarshaveclub/furan/pkg/auth"
 	"github.com/dollarshaveclub/furan/pkg/builder"
 	"github.com/dollarshaveclub/furan/pkg/buildkit"
@@ -73,17 +72,12 @@ func runbuild(cmd *cobra.Command, args []string) error {
 			tracer.WithGlobalTag("buildid", buildid),
 		)
 		defer tracer.Stop()
-
-		span := tracer.StartSpan("runbuild")
-		defer func() {
-			span.Finish(tracer.WithError(err))
-		}()
-
-		ctx = apm.NewAPMContext(ctx, span)
 	}
 
-	setupdone := apm.StartChildSpan(ctx, "setup", nil)
-	defer setupdone(err)
+	span, ctx := tracer.StartSpanFromContext(ctx, "runbuild")
+	defer func() {
+		span.Finish(tracer.WithError(err))
+	}()
 
 	dl, err := datalayer.NewPostgresDBLayer(dbConfig.PostgresURI)
 	if err != nil {
@@ -139,8 +133,6 @@ func runbuild(cmd *cobra.Command, args []string) error {
 
 	ctx, cf := context.WithTimeout(ctx, runbuildtimeout)
 	defer cf()
-
-	setupdone(nil)
 
 	err = bm.Run(ctx, bid)
 	return err

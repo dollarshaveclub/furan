@@ -12,7 +12,8 @@ import (
 	"github.com/gofrs/uuid"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
-	"github.com/dollarshaveclub/furan/pkg/apm"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/mocktracer"
+
 	"github.com/dollarshaveclub/furan/pkg/buildkit"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/generated/furanrpc"
@@ -20,7 +21,6 @@ import (
 	"github.com/dollarshaveclub/furan/pkg/jobrunner"
 	"github.com/dollarshaveclub/furan/pkg/models"
 	"github.com/dollarshaveclub/furan/pkg/tagcheck"
-	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/mocktracer"
 )
 
 func TestManager_Start(t *testing.T) {
@@ -446,8 +446,7 @@ func TestManager_Run(t *testing.T) {
 			if tt.verifytracerf != nil {
 				mt = mocktracer.Start()
 				defer mt.Stop()
-				span = tracer.StartSpan(tt.name)
-				ctx = apm.NewAPMContext(ctx, span)
+				span, ctx = tracer.StartSpanFromContext(ctx, tt.name)
 			}
 
 			if tt.cancel {

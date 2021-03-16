@@ -23,9 +23,9 @@ Furan supports pushing build artifacts to the following image repository service
 
 (Both public and private image repositories are supported.)
 
-Essentially, Furan handles build requests like: 
+Expressed in plain English, Furan handles build requests such as: 
 
-*"Build the GitHub repo acme/foo at commit SHA xxx using the Dockerfile in the root, and push the result to the image repo at quay.io/acme/foo:tagname."*
+*"Build the GitHub repository acme/foo at commit SHA xxx using the Dockerfile in the root, and push the resulting image to the image repository at quay.io/acme/foo:tagname."*
 
 Furan is a core part of the Dollar Shave Club software delivery pipeline and is used programmatically by services such as [Acyl](https://github.com/dollarshaveclub/acyl).
 

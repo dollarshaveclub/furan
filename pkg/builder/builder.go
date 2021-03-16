@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/gofrs/uuid"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
 	"github.com/mitchellh/go-ps"
 
-	"github.com/dollarshaveclub/furan/pkg/apm"
 	"github.com/dollarshaveclub/furan/pkg/datalayer"
 	"github.com/dollarshaveclub/furan/pkg/models"
 )
@@ -164,10 +164,10 @@ func (m *Manager) Run(ctx context.Context, buildID uuid.UUID) (err error) {
 		}
 	}()
 
-	syncbuildf := apm.StartChildSpan(ctx, "syncbuild", map[string]string{
-		"source-repo": b.GitHubRepo,
-	})
-	defer syncbuildf(err)
+	span, ctx := tracer.StartSpanFromContext(ctx, "syncbuild", tracer.Tag("source-repo", b.GitHubRepo))
+	defer func() {
+		span.Finish(tracer.WithError(err))
+	}()
 
 	// ensure the build is always marked as completed
 	defer func() {
