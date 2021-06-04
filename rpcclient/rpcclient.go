@@ -19,7 +19,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 
-	consul "github.com/hashicorp/consul/api"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc"
@@ -57,11 +56,11 @@ type FuranClient struct {
 // DiscoveryOptions describes the options for determining the Furan node to use
 // for the client.
 type DiscoveryOptions struct {
-	UseConsul         bool                  // Whether to use Consul service discovery
-	ConsulAddr        string                // Consul address to use (defaults to '127.0.0.1:8500')
-	SelectionStrategy NodeSelectionStrategy // If UseConsul is true, this specifies the strategy for node selection
-	ServiceName       string                // Required if UseConsul is true
-	NodeList          []string              // Required if UseConsul is false. Nodes in the format "{host}:{port}". A random host will be used if len(NodeList) > 1
+	UseConsul         bool                  // Has no effect (Consul discovery is no longer supported)
+	ConsulAddr        string                // No effect
+	SelectionStrategy NodeSelectionStrategy // No effect
+	ServiceName       string                // No effect
+	NodeList          []string              // Required. Nodes in the format "{host}:{port}". A random host will be used if len(NodeList) > 1
 }
 
 type furanNode struct {
@@ -96,34 +95,7 @@ func NewFuranClient(opts *DiscoveryOptions, logger *log.Logger, datadogServiceNa
 func (fc *FuranClient) init(opts *DiscoveryOptions) error {
 	nodes := []furanNode{}
 	if opts.UseConsul {
-		cc := consul.DefaultConfig()
-		if opts.ConsulAddr != "" {
-			cc.Address = opts.ConsulAddr
-		}
-		c, err := consul.NewClient(cc)
-		if err != nil {
-			return err
-		}
-		qopts := &consul.QueryOptions{}
-		if opts.SelectionStrategy == NetworkProximity {
-			qopts.Near = "_agent"
-		}
-		fc.logger.Printf("connecting to Consul on %v", cc.Address)
-		se, _, err := c.Health().Service(opts.ServiceName, "", true, qopts)
-		if err != nil {
-			return err
-		}
-		if len(se) == 0 {
-			return fmt.Errorf("no Furan hosts found via Consul")
-		}
-		fc.logger.Printf("found %v Furan hosts", len(se))
-		for _, s := range se {
-			n := furanNode{
-				addr: s.Node.Address,
-				port: s.Service.Port,
-			}
-			nodes = append(nodes, n)
-		}
+		panic("consul discovery is not supported!")
 	} else {
 		for _, s := range opts.NodeList {
 			ns := strings.Split(s, ":")
